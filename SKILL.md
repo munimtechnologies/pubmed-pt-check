@@ -1,19 +1,22 @@
 ---
 name: pubmed-pt-check
-description: Check PubMed search strings, saved search strategies, search filters or code for publication types ([pt]) and quoted MeSH headings ([mh]) that NLM renamed or deleted, such as "Pregnant Women" (now "Pregnant People"), "Disabled Persons" (now "Persons with Disabilities"), "Tobacco" (now "Nicotiana"), "Depressive Disorder, Major" (now "Major Depressive Disorder") or "Retraction of Publication" (now "Retraction Notice"), which now silently match nothing. Covers every heading renamed for MeSH 2024, 2025 and 2026. Use before running or publishing a PubMed search or filter, when re-running an older strategy, when a PubMed count looks too low or a NOT filter seems to do nothing, or when reviewing code that calls E-utilities.
+description: Check PubMed search strings, saved search strategies, search filters or code for publication types ([pt]) and quoted MeSH headings ([mh]) that NLM renamed or deleted, such as "Pregnant Women" (now "Pregnant People"), "Disabled Persons" (now "Persons with Disabilities"), "African Americans" (now "Black or African American"), "Neural Networks (Computer)" (now "Neural Networks, Computer"), "Evaluation Studies" (now "Evaluation Study") or "Retraction of Publication" (now "Retraction Notice"), which now silently match nothing. Covers every heading renamed for MeSH 2020 to 2026. Use before running or publishing a PubMed search or filter, when re-running an older strategy, when a PubMed count looks too low or a NOT filter seems to do nothing, or when reviewing code that calls E-utilities.
 license: Apache-2.0
 ---
 
 # pubmed-pt-check
 
-NLM renames MeSH headings every year. For 2024 to 2026 it changed the words of 89 subject
-headings, among them "Pregnant Women" (now "Pregnant People"), "Disabled Persons" (now "Persons
-with Disabilities"), "Tobacco" (now "Nicotiana") and "Depressive Disorder, Major" (now "Major
-Depressive Disorder"). It renamed four publication types, among them "Retraction of Publication"
-(now "Retraction Notice") and "Consensus Development Conference" (now "Consensus Statement"), and
-deleted six headings for 2026. In PubMed a quoted old name matches nothing. AND gives 0, OR
-silently drops the term, and NOT excludes nothing. PubMed only adds a warning. Unquoted, an old
-heading name is mapped to the new one. Evidence: MESH-RENAMES.md, FINDINGS.md, FILTERS.md.
+NLM renames MeSH headings every year. From 2020 to 2026 it changed 242 subject and geographic
+headings that PubMed no longer finds under the old name, among them "Pregnant Women" (now
+"Pregnant People"), "Disabled Persons" (now "Persons with Disabilities"), "African Americans"
+(now "Black or African American"), "Clostridium difficile" (now "Clostridioides difficile") and
+"Neural Networks (Computer)" (now "Neural Networks, Computer"; a change of punctuation only, and
+the old form still finds nothing). It renamed eight publication types that PubMed citations carry,
+among them "Retraction of Publication" (now "Retraction Notice") and "Evaluation Studies" (now
+"Evaluation Study"), and deleted 14 headings. In PubMed a quoted old name matches nothing. AND
+gives 0, OR silently drops the term, and NOT excludes nothing. PubMed only adds a warning.
+Unquoted, an old heading name is mapped to the new one. Evidence: MESH-RENAMES.md,
+MESH-RENAMES-2020-2023.md, FINDINGS.md, FILTERS.md.
 
 ## When to use
 
@@ -38,8 +41,10 @@ python pubmed_pt_check.py --json '<query>'               # structured output
 Exit code 1 means at least one renamed, deleted or unrecognized publication type or quoted MeSH
 heading was found. Show the user each finding's `effect` line, then offer the `--fix` version.
 `--fix` does not replace deleted headings (`status: deleted`); ask the user what to use instead.
-For retraction notices, NLM's own filter uses `hasretractionof OR "Retraction Notice"[pt]`. Use
-`--live` on long or old strategies: the offline table covers MeSH 2024 to 2026 only.
+A heading reported as "replaced by" was deleted by NLM; PubMed maps its unquoted name to the
+replacement, so check that the replacement fits the search. For retraction notices, NLM's own
+filter uses `hasretractionof OR "Retraction Notice"[pt]`. Use `--live` on long or old
+strategies: the offline table covers MeSH 2020 to 2026 only.
 
 ## Rules for the agent
 

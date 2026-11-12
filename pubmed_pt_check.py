@@ -12,7 +12,10 @@ now "Retraction Notice" (MeSH 2025, NLM Tech Bull 2024 Nov-Dec;(461):e4); "Congr
 (MeSH 2026, found by comparing NLM's MeSH 2025 and 2026 RDF). PubMed's article-type filters
 followed in March 2026 (NLM Tech Bull 2026 Mar-Apr;(469):e1). Checked against E-utilities on
 2026-11-11/12, the old names no longer match anything in a [pt] search: PubMed treats the term as
-an empty set and only adds a "quoted phrase not found" warning.
+an empty set and only adds a "quoted phrase not found" warning. Since 0.1.4 the table also has
+four MeSH 2020 renames of publication types that PubMed uses ("Evaluation Studies" is now
+"Evaluation Study", "Validation Studies" is "Validation Study", "Government Document" is
+"Government Publication", "Webcasts" is "Webcast"); their old names give 0 too, quoted or not.
 
 - alone or joined with AND: the search (or AND clause) finds 0 records;
 - joined with OR: the term is dropped and the rest of the OR group runs, so the result silently
@@ -24,13 +27,17 @@ but new citations no longer get them.
 
 MeSH headings behave the same way. PubMed maps an old heading name to the new one only when the
 term is not in quotes; a quoted old name ("..."[mh], [mesh], [majr], with or without :noexp)
-finds nothing. 0.1.1 and 0.1.2 listed eight MeSH 2026 renames. 0.1.3 lists every heading NLM
-renamed in MeSH 2024, 2025 and 2026 (89 renames: 21, 30 and 38), found by comparing the yearly
-MeSH RDF graphs at id.nlm.nih.gov/mesh/sparql, and the 6 headings deleted for 2026. On
-2026-11-12 every quoted old name, and every deleted heading, gave 0 records in PubMed with
-"quoted phrase not found"; every new name was recognized. Renames that only changed letter case
-or punctuation (Tinea cruris; Health Disparate, Minority and Vulnerable Populations) still work
-and are not listed. See MESH-RENAMES.md.
+finds nothing. 0.1.3 listed every heading NLM renamed in MeSH 2024, 2025 and 2026 (89). 0.1.4
+adds MeSH 2020 to 2023 (found the same way, by comparing NLM's yearly MeSH RDF graphs at
+id.nlm.nih.gov/mesh/sparql; the 2020 list matches NLM's own "Changed and Deleted MeSH
+Headings - 2020" bulletin) and eight names of headings NLM deleted and replaced, where PubMed
+maps the unquoted old name to the replacement (for example Cervical Intraepithelial Neoplasia, deleted for
+2023: unquoted it maps to Uterine Cervical Dysplasia; quoted it finds nothing). On 2026-11-12
+every quoted old name in the table gave 0 records in PubMed with "quoted phrase not found", and
+every current name was recognized. Renames that only changed letter case, or dropped a comma,
+a hyphen or a pair of parentheses between words, still work and are not listed. Turning "(X)" into ", X" is NOT harmless:
+"Neural Networks (Computer)"[mh] and 28 more such 2020 names give 0. See MESH-RENAMES.md and
+MESH-RENAMES-2020-2023.md.
 
 This script reads search strings, saved strategies or source code, finds every term tagged [pt],
 [ptyp], [Publication Type], [mh], [mesh], [majr] or [MeSH Terms], and reports renamed, deleted
@@ -57,14 +64,15 @@ import time
 import urllib.parse
 import urllib.request
 
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 MAILTO = "mv2@munimtech.com"
 TOOL = "pubmed-pt-check"
 UA = "pubmed-pt-check/%s (MV2, Munim, Inc.; mailto:%s)" % (VERSION, MAILTO)
 ESEARCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-SOURCE = ("NLM Technical Bulletin 2024 Nov-Dec (461):e4, 2026 Jan-Feb (468):e6 and 2026 Mar-Apr "
-          "(469):e1, https://www.nlm.nih.gov/pubs/techbull/ma26/ma26_pubmed_update_MeSH_changes.html; "
-          "MeSH RDF yearly graphs 2023-2026, https://id.nlm.nih.gov/mesh/sparql (compared "
+SOURCE = ("NLM Technical Bulletin 2019 Nov-Dec (Changed and Deleted MeSH Headings - 2020), "
+          "2024 Nov-Dec (461):e4, 2026 Jan-Feb (468):e6 and 2026 Mar-Apr (469):e1, "
+          "https://www.nlm.nih.gov/pubs/techbull/ma26/ma26_pubmed_update_MeSH_changes.html; "
+          "MeSH RDF yearly graphs 2019-2026, https://id.nlm.nih.gov/mesh/sparql (compared "
           "2026-11-12)")
 
 
@@ -78,14 +86,25 @@ RENAMED = {
     key("Congress"): "Conference Proceedings",
     key("Consensus Development Conference"): "Consensus Statement",
     key("Classical Article"): "Seminal Article",
+    # MeSH 2020 (MeSH RDF 2019 vs 2020). Only types that PubMed citations carry are listed: NLM
+    # renamed 13 more catalog-only types for 2020 (Maps, Programs, Essays, ...), and neither
+    # their old nor their new names match anything in PubMed.
+    key("Evaluation Studies"): "Evaluation Study",
+    key("Validation Studies"): "Validation Study",
+    key("Government Document"): "Government Publication",
+    key("Webcasts"): "Webcast",
 }
 # MeSH year of each rename (NLM Technical Bulletins 461:e4 and 468:e6; Classical Article from
-# the MeSH 2025 vs 2026 RDF, D016419).
+# the MeSH 2025 vs 2026 RDF, D016419; the 2020 renames from the MeSH 2019 vs 2020 RDF).
 RENAMED_YEAR = {
     key("Retraction of Publication"): 2025,
     key("Congress"): 2026,
     key("Consensus Development Conference"): 2026,
     key("Classical Article"): 2026,
+    key("Evaluation Studies"): 2020,
+    key("Validation Studies"): 2020,
+    key("Government Document"): 2020,
+    key("Webcasts"): 2020,
 }
 DISCONTINUED = {key(n) for n in (
     "Autobiography", "Bibliography", "Clinical Conference",
@@ -96,10 +115,191 @@ DISCONTINUED = {key(n) for n in (
 
 # Renamed MeSH headings (descriptors): (old name, current name, MeSH year of the rename).
 # Found by comparing the English rdfs:label of every descriptor in NLM's yearly MeSH RDF graphs
-# (2023 vs 2024, 2024 vs 2025, 2025 vs 2026). On 2026-11-12 every quoted old name below gave 0
-# records in PubMed with "quoted phrase not found", and every current name was recognized.
-# A descriptor renamed twice maps both old names to its current name.
+# (2019 vs 2020 through 2025 vs 2026). On 2026-11-12 every quoted old name below gave 0 records
+# in PubMed with "quoted phrase not found", and every current name was recognized.
+# A descriptor renamed twice maps both old names to its current name. Names that NLM renamed
+# and later restored (Xenarthra, Fermented Foods, Extreme Cold, Pimenta, Alaska Natives) are
+# current again and are not listed; only the in-between names are.
 MESH_RENAMES = [
+    # MeSH 2020. NLM's bulletin lists 93 changed headings: the 87 below; 2 case-only renames
+    # that still work (Copper-transporting ATPases; MTOR Associated Protein, LST8 Homolog); 3
+    # names NLM restored later (Extreme Cold, Fermented Foods, Xenarthra); and National Health
+    # Planning Information Center (U.S.), left out because PubMed finds neither name.
+    ("Abstracting and Indexing as Topic", "Abstracting and Indexing", 2020),
+    ("Advertising as Topic", "Advertising", 2020),
+    ("Allethrin", "Allethrins", 2020),
+    ("Anterior Cerebellar Commissure", "Anterior Commissure, Brain", 2020),
+    ("Aspirations (Psychology)", "Aspirations, Psychological", 2020),
+    ("Autobiography as Topic", "Autobiographies as Topic", 2020),
+    ("Bibliography as Topic", "Bibliographies as Topic", 2020),
+    ("Biography as Topic", "Biographies as Topic", 2020),
+    ("Bornanes", "Camphanes", 2020),
+    ("Catchment Area (Health)", "Catchment Area, Health", 2020),
+    ("Centers for Disease Control and Prevention (U.S.)",
+     "Centers for Disease Control and Prevention, U.S.", 2020),
+    ("Centers for Medicare and Medicaid Services (U.S.)",
+     "Centers for Medicare and Medicaid Services, U.S.", 2020),
+    ("Cercopithecus aethiops", "Chlorocebus aethiops", 2020),
+    ("Codependency (Psychology)", "Codependency, Psychological", 2020),
+    ("Conditioning (Psychology)", "Conditioning, Psychological", 2020),
+    ("Conflict (Psychology)", "Conflict, Psychological", 2020),
+    ("Confounding Factors (Epidemiology)", "Confounding Factors, Epidemiologic", 2020),
+    ("Countertransference (Psychology)", "Countertransference", 2020),
+    ("Critical Period (Psychology)", "Critical Period, Psychological", 2020),
+    ("Decapoda (Crustacea)", "Decapoda", 2020),
+    ("Denial (Psychology)", "Denial, Psychological", 2020),
+    ("Dependency (Psychology)", "Dependency, Psychological", 2020),
+    ("Diary as Topic", "Diaries as Topic", 2020),
+    ("Discrimination (Psychology)", "Discrimination, Psychological", 2020),
+    ("Displacement (Psychology)", "Displacement, Psychological", 2020),
+    ("Diterpenes, Abietane", "Abietanes", 2020),
+    ("Dolichol", "Dolichols", 2020),
+    ("Duplicate Publication as Topic", "Duplicate Publications as Topic", 2020),
+    ("Early Intervention (Education)", "Early Intervention, Educational", 2020),
+    ("Earth (Planet)", "Earth, Planet", 2020),
+    ("Exhibits as Topic", "Exhibitions as Topic", 2020),
+    ("Extraversion (Psychology)", "Extraversion, Psychological", 2020),
+    ("Fetishism (Psychiatric)", "Fetishism, Psychiatric", 2020),
+    ("Focused Assessment with Sonography of Trauma",
+     "Focused Assessment with Sonography for Trauma", 2020),
+    ("Generalization (Psychology)", "Generalization, Psychological", 2020),
+    ("Glycophorin", "Glycophorins", 2020),
+    ("Handling (Psychology)", "Handling, Psychological", 2020),
+    ("Healthy Diet", "Diet, Healthy", 2020),
+    ("Helix (Snails)", "Helix, Snails", 2020),
+    ("Hypersomnolence, Idiopathic", "Idiopathic Hypersomnia", 2020),
+    ("Identification (Psychology)", "Identification, Psychological", 2020),
+    ("Imagery (Psychotherapy)", "Imagery, Psychotherapy", 2020),
+    ("Imprinting (Psychology)", "Imprinting, Psychological", 2020),
+    ("Infection", "Infections", 2020),
+    ("Inhibition (Psychology)", "Inhibition, Psychological", 2020),
+    ("Introversion (Psychology)", "Introversion, Psychological", 2020),
+    ("Knowledge of Results (Psychology)", "Knowledge of Results, Psychological", 2020),
+    ("L Cells (Cell Line)", "L Cells", 2020),
+    ("Latency Period (Psychology)", "Latency Period, Psychological", 2020),
+    ("Learning Disorders", "Learning Disabilities", 2020),
+    ("Lewis Blood-Group System", "Lewis Blood Group Antigens", 2020),
+    ("Literature Based Discovery", "Knowledge Discovery", 2020),
+    ("Macedonia (Republic)", "Republic of North Macedonia", 2020),
+    ("Mainstreaming (Education)", "Mainstreaming, Education", 2020),
+    ("Mercury (Planet)", "Mercury, Planet", 2020),
+    ("Mitochondrial Degradation", "Mitophagy", 2020),
+    ("Moraxella (Branhamella) catarrhalis", "Moraxella catarrhalis", 2020),
+    ("Moraxella (Moraxella) bovis", "Moraxella bovis", 2020),
+    ("National Academies of Science, Engineering, and Medicine (U.S.) Health and Medicine "
+     "Division", "National Academies of Science, Engineering, and Medicine, U.S., Health and "
+     "Medicine Division", 2020),
+    ("National Academy of Sciences (U.S.)", "National Academy of Sciences, U.S.", 2020),
+    ("National Center for Health Care Technology (U.S.)",
+     "National Center for Health Care Technology, U.S.", 2020),
+    ("National Center for Health Statistics (U.S.)",
+     "National Center for Health Statistics, U.S.", 2020),
+    ("National Institute for Occupational Safety and Health (U.S.)",
+     "National Institute for Occupational Safety and Health, U.S.", 2020),
+    ("Neural Networks (Computer)", "Neural Networks, Computer", 2020),
+    ("Nucleopolyhedrovirus", "Nucleopolyhedroviruses", 2020),
+    ("Nurseries", "Nurseries, Infant", 2020),
+    ("Outcome and Process Assessment (Health Care)",
+     "Outcome and Process Assessment, Health Care", 2020),
+    ("Outcome Assessment (Health Care)", "Outcome Assessment, Health Care", 2020),
+    ("Power (Psychology)", "Power, Psychological", 2020),
+    ("Practice (Psychology)", "Practice, Psychological", 2020),
+    ("Process Assessment (Health Care)", "Process Assessment, Health Care", 2020),
+    ("Programmed Instruction as Topic", "Programmed Instructions as Topic", 2020),
+    ("Recognition (Psychology)", "Recognition, Psychology", 2020),
+    ("Regression (Psychology)", "Regression, Psychology", 2020),
+    ("Reinforcement (Psychology)", "Reinforcement, Psychology", 2020),
+    ("Rejection (Psychology)", "Rejection, Psychology", 2020),
+    ("Retention (Psychology)", "Retention, Psychology", 2020),
+    ("Set (Psychology)", "Set, Psychology", 2020),
+    ("Shadowing (Histology)", "Shadowing Technique, Histology", 2020),
+    ("Skates (Fish)", "Skates, Fish", 2020),
+    ("SOS Response (Genetics)", "SOS Response, Genetics", 2020),
+    ("Street Drugs", "Illicit Drugs", 2020),
+    ("Study Guide as Topic", "Study Guides as Topic", 2020),
+    ("Swaziland", "Eswatini", 2020),
+    ("Transfer (Psychology)", "Transfer, Psychology", 2020),
+    ("Transference (Psychology)", "Transference, Psychology", 2020),
+    ("Unconscious (Psychology)", "Unconscious, Psychology", 2020),
+    # MeSH 2020, deleted and replaced (NLM bulletin; PubMed maps the unquoted name)
+    ("Cascara", "Rhamnus", 2020),
+    ("Coniferophyta", "Tracheophyta", 2020),
+    ("Punicaceae", "Lythraceae", 2020),
+    ("Taxodiaceae", "Cupressaceae", 2020),
+    # MeSH 2021
+    ("Aldehyde Dehydrogenase 1", "Aldehyde Dehydrogenase 1 Family", 2021),
+    ("Bonding, Human-Pet", "Human-Animal Bond", 2021),
+    ("Respiratory Distress Syndrome, Adult", "Respiratory Distress Syndrome", 2021),
+    ("RNA Replicase", "RNA-Dependent RNA Polymerase", 2021),
+    ("Social Distance", "Psychological Distance", 2021),
+    ("Clostridium difficile", "Clostridioides difficile", 2021),
+    ("Pectobacterium chrysanthemi", "Dickeya chrysanthemi", 2021),
+    ("Mentally Disabled Persons", "Persons with Intellectual Disabilities", 2021),
+    ("Debaromyces", "Debaryomyces", 2021),
+    ("Site-Specific DNA-Methyltransferase (Cytosine-N(4)-Specific)",
+     "Site-Specific DNA-Methyltransferase (Cytosine-N4-Specific)", 2021),
+    ("Infantile Apparent Life-Threatening Event", "Brief, Resolved, Unexplained Event", 2021),
+    # MeSH 2022
+    ("Fermented Foods and Beverages", "Fermented Foods", 2022),
+    ("Angiopoietin-like 4 Protein", "Angiopoietin-Like Protein 4", 2022),
+    ("Environmental DNA", "DNA, Environmental", 2022),
+    ("American Natives", "American Indian or Alaska Native", 2022),
+    ("Dental Models", "Models, Dental", 2022),
+    ("Echidna", "Tachyglossidae", 2022),
+    ("Cingulata", "Xenarthra", 2022),
+    ("Ethnic Groups", "Ethnicity", 2022),
+    ("Hispanic Americans", "Hispanic or Latino", 2022),
+    ("Housekeeping", "Household Work", 2022),
+    ("Immunosuppression", "Immunosuppression Therapy", 2022),
+    ("Insectivora", "Eulipotyphla", 2022),
+    ("Purpura, Schoenlein-Henoch", "IgA Vasculitis", 2022),
+    ("Kinesin", "Kinesins", 2022),
+    ("Genus Pimenta", "Pimenta", 2022),
+    ("African Continental Ancestry Group", "Black People", 2022),
+    ("European Continental Ancestry Group", "White People", 2022),
+    ("Asian Continental Ancestry Group", "Asian People", 2022),
+    ("Oceanic Ancestry Group", "Native Hawaiian or Pacific Islander", 2022),
+    ("Continental Population Groups", "Racial Groups", 2022),
+    ("Anabaena flos-aquae", "Dolichospermum flos-aquae", 2022),
+    ("Casein Kinase Iepsilon", "Casein Kinase 1 epsilon", 2022),
+    ("Translational Medical Research", "Translational Research, Biomedical", 2022),
+    # MeSH 2023
+    ("Lactobacillus paracasei", "Lacticaseibacillus paracasei", 2023),
+    ("Lactobacillus salivarius", "Ligilactobacillus salivarius", 2023),
+    ("Lactobacillus sakei", "Latilactobacillus sakei", 2023),
+    ("Xanthorrhoeaceae", "Asphodelaceae", 2023),
+    ("Alaskan Natives", "Alaska Natives", 2023),
+    ("Whole Exome Sequencing", "Exome Sequencing", 2023),
+    ("Health Disparity, Minority and Vulnerable Populations",
+     "Health Disparate Minority and Vulnerable Populations", 2023),
+    ("Amputation", "Amputation, Surgical", 2023),
+    ("Aneurysm, Dissecting", "Aortic Dissection", 2023),
+    ("Asian Americans", "Asian", 2023),
+    ("African Americans", "Black or African American", 2023),
+    ("Inuits", "Inuit", 2023),
+    ("Glycated Hemoglobin A", "Glycated Hemoglobin", 2023),
+    ("Hantavirus", "Orthohantavirus", 2023),
+    ("Homeless Persons", "Ill-Housed Persons", 2023),
+    ("Lactobacillus casei", "Lacticaseibacillus casei", 2023),
+    ("Serotonin Uptake Inhibitors", "Selective Serotonin Reuptake Inhibitors", 2023),
+    ("RNA, Guide", "RNA, Guide, Kinetoplastida", 2023),
+    ("Lycopersicon esculentum", "Solanum lycopersicum", 2023),
+    ("Reconstructive Surgical Procedures", "Plastic Surgery Procedures", 2023),
+    ("Blacks", "Black People", 2023),
+    ("Whites", "White People", 2023),
+    ("Asians", "Asian People", 2023),
+    ("American Native Continental Ancestry Group", "American Indian or Alaska Native", 2023),
+    ("SARS Virus", "Severe acute respiratory syndrome-related coronavirus", 2023),
+    ("Lactobacillus brevis", "Levilactobacillus brevis", 2023),
+    ("Lactobacillus fermentum", "Limosilactobacillus fermentum", 2023),
+    ("Lactobacillus reuteri", "Limosilactobacillus reuteri", 2023),
+    ("Lactobacillus rhamnosus", "Lacticaseibacillus rhamnosus", 2023),
+    ("Alien Hand Syndrome", "Alien Limb Phenomenon", 2023),
+    ("Waste Water", "Wastewater", 2023),
+    ("Far East", "Asia, Eastern", 2023),
+    # MeSH 2023, deleted (PubMed maps the unquoted name to the heading given here)
+    ("American Indians or Alaska Natives", "American Indian or Alaska Native", 2023),
+    ("Cervical Intraepithelial Neoplasia", "Uterine Cervical Dysplasia", 2023),
     # MeSH 2024
     ("Cyclophilin D", "Peptidyl-Prolyl Isomerase F", 2024),
     ("Tyrosine Protein Kinase Inhibitors", "Tyrosine Kinase Inhibitors", 2024),
@@ -122,6 +322,8 @@ MESH_RENAMES = [
     ("Lysosome-Associated Membrane Glycoproteins", "Lysosomal Membrane Proteins", 2024),
     ("Extreme Cold Weather", "Extreme Cold", 2024),
     ("Hyalinosis, Systemic", "Hyaline Fibromatosis Syndrome", 2024),
+    # MeSH 2024, deleted (PubMed maps the unquoted name to the heading given here)
+    ("Extreme Hot Weather", "Extreme Heat", 2024),
     # MeSH 2025
     ("Abortion, Criminal", "Abortion, Illegal", 2025),
     ("Network Meta-Analysis", "Network Meta-Analysis as Topic", 2025),
@@ -199,6 +401,12 @@ MESH_RENAMES = [
 ]
 MESH_RENAMED = {key(o): n for o, n, _ in MESH_RENAMES}
 MESH_RENAMED_YEAR = {key(o): y for o, _, y in MESH_RENAMES}
+# Old names whose descriptor NLM deleted (not renamed); PubMed maps the unquoted name to the
+# heading in MESH_RENAMES (checked 2026-11-12), so the report says "replaced by".
+MESH_REPLACED = {key(n) for n in (
+    "Cascara", "Coniferophyta", "Punicaceae", "Taxodiaceae", "American Natives",
+    "American Indians or Alaska Natives", "Cervical Intraepithelial Neoplasia",
+    "Extreme Hot Weather")}
 # Headings NLM deleted for MeSH 2026 (marked [OBSOLETE] in the 2026 RDF). On 2026-11-12 each,
 # quoted, gave 0 records with "quoted phrase not found"; unquoted, Meta-Research[mh] gave 0 too.
 MESH_DELETED = {key(n): 2026 for n in (
@@ -210,6 +418,8 @@ NOTES = {
                                       "'hasretractionof OR retraction notice[pt]'.",
     key("Classical Article"): "Seminal Article is itself on NLM's list of discontinued types: "
                               "older citations keep it, new citations no longer get it.",
+    key("Government Document"): "Government Publication is itself on NLM's list of discontinued "
+                                "types: older citations keep it, new citations no longer get it.",
 }
 
 TAG = re.compile(r"\[\s*(pt|ptyp|publication type)\s*\]", re.I)
@@ -506,10 +716,12 @@ def describe(f):
     head = '%s: "%s"%s' % (where, f["term"], f["tag"])
     what = "MeSH heading" if f.get("field") == "mesh" else "publication type"
     year = (" (MeSH %s)" % f["mesh_year"]) if f.get("mesh_year") else ""
+    verb = ("replaced by" if f.get("field") == "mesh" and key(f["term"]) in MESH_REPLACED
+            else "renamed to")
     if f["status"] == "renamed":
-        head += ' -> renamed to "%s"%s.' % (f["new_name"], year)
+        head += ' -> %s "%s"%s.' % (verb, f["new_name"], year)
     elif f["status"] == "renamed_mapped":
-        head += ' -> renamed to "%s"%s; mapped because unquoted.' % (f["new_name"], year)
+        head += ' -> %s "%s"%s; mapped because unquoted.' % (verb, f["new_name"], year)
     elif f["status"] == "deleted":
         head += " -> heading deleted%s; replace it by hand." % year
     elif f["status"] == "discontinued":

@@ -12,7 +12,13 @@ with quotedphrasesnotfound; 'Depressive Disorder, Major[mh]' unquoted -> "major 
 disorder"[MeSH Terms], 46,495 records (see HEADINGS-2026.md).
 The 0.1.3 tests follow the MeSH 2023-2026 RDF comparison and the PubMed checks of 2026-11-12
 (see MESH-RENAMES.md): '"Pregnant Women"[Mesh]' -> 0 with quotedphrasesnotfound; '"Pregnant
-People"[mh]' -> 17,946; '"Tinea cruris"[mh]' (a case-only rename) -> 15, recognized."""
+People"[mh]' -> 17,946; '"Tinea cruris"[mh]' (a case-only rename) -> 15, recognized.
+The 0.1.4 tests follow the MeSH 2019-2023 RDF comparison and the PubMed checks of 2026-11-12
+(see MESH-RENAMES-2020-2023.md): '"Neural Networks (Computer)"[mh]' -> 0 with
+quotedphrasesnotfound; '"Neural Networks, Computer"[mh]' -> 112,589; 'Cervical Intraepithelial
+Neoplasia[mh]' unquoted -> "uterine cervical dysplasia"[MeSH Terms], 16,122; quoted -> not found;
+'"Protein-Serine-Threonine Kinases"[mh]' and '"Pyruvate Dehydrogenase (Acetyl-Transferring)
+Kinase"[mh]' recognized."""
 import io
 import json
 import os
@@ -86,6 +92,10 @@ def broken_fetch(url):
     raise OSError("network down")
 
 
+def _words(name):
+    return " ".join(name.replace("(", " ").replace(")", " ").replace(",", " ").split()).lower()
+
+
 class TestParsing(unittest.TestCase):
     def test_quoted_term(self):
         t = p.find_terms('"Retraction of Publication"[pt]')
@@ -122,8 +132,8 @@ class TestParsing(unittest.TestCase):
 
     def test_seventeen_discontinued(self):
         self.assertEqual(len(p.DISCONTINUED), 17)
-        self.assertEqual(len(p.RENAMED), 4)
-        self.assertEqual(len(p.MESH_RENAMED), 89)
+        self.assertEqual(len(p.RENAMED), 8)
+        self.assertEqual(len(p.MESH_RENAMED), 249)
 
     def test_rename_years(self):
         # NLM Tech Bull 2024 Nov-Dec (461):e4 and 2026 Jan-Feb (468):e6; MeSH RDF for D016419.
@@ -135,7 +145,7 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(set(p.MESH_RENAMED_YEAR), set(p.MESH_RENAMED))
 
     def test_version(self):
-        self.assertEqual(p.VERSION, "0.1.3")
+        self.assertEqual(p.VERSION, "0.1.4")
         self.assertNotIn("following the 2025 MeSH change", p.__doc__)
 
 
@@ -259,14 +269,18 @@ class TestMesh2026Headings(unittest.TestCase):
 
 
 class TestMeshCensus(unittest.TestCase):
-    """0.1.3: every MeSH 2024, 2025 and 2026 heading rename, plus the 2026 deletions."""
+    """0.1.3: every MeSH 2024, 2025 and 2026 heading rename, plus the 2026 deletions.
+    0.1.4: MeSH 2020 to 2023 added."""
 
     def test_counts_per_year(self):
         years = list(p.MESH_RENAMED_YEAR.values())
-        self.assertEqual((years.count(2024), years.count(2025), years.count(2026)), (21, 30, 38))
-        self.assertEqual(len(p.MESH_RENAMES), 89)
+        self.assertEqual(tuple(years.count(y) for y in range(2020, 2027)),
+                         (91, 11, 23, 34, 22, 30, 38))
+        self.assertEqual(len(p.MESH_RENAMES), 249)
         self.assertEqual(len(p.MESH_DELETED), 6)
         self.assertEqual(set(p.MESH_DELETED.values()), {2026})
+        self.assertEqual(len(p.MESH_REPLACED), 8)
+        self.assertTrue(p.MESH_REPLACED <= set(p.MESH_RENAMED))
 
     def test_current_names_are_not_old_names(self):
         for new in p.MESH_RENAMED.values():
@@ -353,6 +367,100 @@ class TestMeshCensus(unittest.TestCase):
         self.assertEqual(f[0]["mesh_year"], 2026)
         self.assertIn("discontinued types", f[0]["note"])
         self.assertEqual(p.fix_text('"Classical Article"[pt]'), '"Seminal Article"[pt]')
+
+
+class TestMesh2020To2023(unittest.TestCase):
+    """0.1.4: MeSH 2020-2023 renames (MeSH RDF 2019-2023; PubMed checks of 2026-11-12)."""
+
+    def test_parenthesis_to_comma_is_a_rename(self):
+        self.assertEqual(p.classify("Neural Networks (Computer)", "mesh", True),
+                         ("renamed", "Neural Networks, Computer"))
+        self.assertEqual(p.MESH_RENAMED_YEAR[p.key("Neural Networks (Computer)")], 2020)
+        self.assertEqual(p.classify("Neural Networks, Computer", "mesh", True), ("ok", None))
+        self.assertEqual(p.classify("Outcome Assessment (Health Care)", "mesh", True),
+                         ("renamed", "Outcome Assessment, Health Care"))
+        self.assertEqual(p.classify("Centers for Disease Control and Prevention (U.S.)", "mesh",
+                                    True),
+                         ("renamed", "Centers for Disease Control and Prevention, U.S."))
+        # 29 MeSH 2020 renames only turned "(X)" into ", X"; PubMed finds none of the old names.
+        same_words = [o for o, n, y in p.MESH_RENAMES
+                      if y == 2020 and "(" in o and _words(o) == _words(n)]
+        self.assertEqual(len(same_words), 29)
+
+    def test_fix_neural_networks(self):
+        self.assertEqual(p.fix_text('"Neural Networks (Computer)"[Mesh] OR "deep learning"[tiab]'),
+                         '"Neural Networks, Computer"[Mesh] OR "deep learning"[tiab]')
+
+    def test_plain_rename_text(self):
+        out = io.StringIO()
+        self.assertEqual(p.main(['"Neural Networks (Computer)"[mh]'], out=out), 1)
+        self.assertIn('renamed to "Neural Networks, Computer" (MeSH 2020).', out.getvalue())
+
+    def test_punctuation_changes_that_still_work_are_not_listed(self):
+        for name in ("Protein-Serine-Threonine Kinases",
+                     "Pyruvate Dehydrogenase (Acetyl-Transferring) Kinase",
+                     "Copper-transporting ATPases", "MTOR Associated Protein, LST8 Homolog"):
+            self.assertEqual(p.classify(name, "mesh", True), ("ok", None), name)
+
+    def test_restored_names_are_current(self):
+        for name in ("Xenarthra", "Fermented Foods", "Extreme Cold", "Pimenta", "Alaska Natives"):
+            self.assertEqual(p.classify(name, "mesh", True), ("ok", None), name)
+        self.assertEqual(p.classify("Cingulata", "mesh", True), ("renamed", "Xenarthra"))
+        self.assertEqual(p.MESH_RENAMED_YEAR[p.key("Cingulata")], 2022)
+        self.assertEqual(p.classify("Alaskan Natives", "mesh", True),
+                         ("renamed", "Alaska Natives"))
+        self.assertEqual(p.MESH_RENAMED_YEAR[p.key("Alaskan Natives")], 2023)
+
+    def test_chains_end_at_current_name(self):
+        for old in ("African Continental Ancestry Group", "Blacks"):
+            self.assertEqual(p.MESH_RENAMED[p.key(old)], "Black People", old)
+        self.assertEqual(p.MESH_RENAMED[p.key("African Americans")], "Black or African American")
+        self.assertEqual(p.MESH_RENAMED[p.key("Oceanic Ancestry Group")],
+                         "Native Hawaiian or Pacific Islander")
+        self.assertEqual(p.MESH_RENAMED[p.key("Mentally Disabled Persons")],
+                         "Persons with Intellectual Disabilities")
+
+    def test_widely_used_examples(self):
+        cases = [("Clostridium difficile", "Clostridioides difficile", 2021),
+                 ("Infection", "Infections", 2020),
+                 ("Street Drugs", "Illicit Drugs", 2020),
+                 ("Glycated Hemoglobin A", "Glycated Hemoglobin", 2023),
+                 ("Serotonin Uptake Inhibitors", "Selective Serotonin Reuptake Inhibitors", 2023),
+                 ("Hispanic Americans", "Hispanic or Latino", 2022)]
+        for old, new, year in cases:
+            self.assertEqual(p.classify(old, "mesh", True), ("renamed", new), old)
+            self.assertEqual(p.classify(old, "mesh", False), ("renamed_mapped", new), old)
+            self.assertEqual(p.MESH_RENAMED_YEAR[p.key(old)], year, old)
+
+    def test_replaced_heading(self):
+        q = '"Cervical Intraepithelial Neoplasia"[Mesh] AND screening[tiab]'
+        out = io.StringIO()
+        self.assertEqual(p.main([q], out=out), 1)
+        self.assertIn('replaced by "Uterine Cervical Dysplasia" (MeSH 2023).', out.getvalue())
+        self.assertIn("0 records", out.getvalue())
+        self.assertEqual(p.fix_text(q), '"Uterine Cervical Dysplasia"[Mesh] AND screening[tiab]')
+
+    def test_n4_rename(self):
+        old = "Site-Specific DNA-Methyltransferase (Cytosine-N(4)-Specific)"
+        self.assertEqual(p.classify(old, "mesh", True)[0], "renamed")
+        t = p.find_terms('"%s"[mh]' % old)
+        self.assertEqual(t[0]["term"], old)
+
+    def test_2020_publication_types(self):
+        self.assertEqual(p.classify("Evaluation Studies"), ("renamed", "Evaluation Study"))
+        self.assertEqual(p.classify("validation studies"), ("renamed", "Validation Study"))
+        self.assertEqual(p.classify("Government Document"), ("renamed", "Government Publication"))
+        self.assertEqual(p.classify("Webcasts"), ("renamed", "Webcast"))
+        self.assertEqual(p.RENAMED_YEAR[p.key("Evaluation Studies")], 2020)
+        self.assertEqual(p.classify("Evaluation Study"), ("ok", None))
+        self.assertEqual(p.classify("Government Publication"), ("discontinued", None))
+        # catalog-only types renamed for 2020 are not listed: PubMed finds neither name
+        self.assertEqual(p.classify("Maps"), ("ok", None))
+        self.assertEqual(p.fix_text('"Evaluation Studies"[pt] OR "Validation Studies"[pt]'),
+                         '"Evaluation Study"[pt] OR "Validation Study"[pt]')
+        f = [x for x in p.check_text('"Government Document"[pt]') if x["status"] != "ok"]
+        self.assertEqual(len(f), 1)
+        self.assertIn("discontinued types", f[0]["note"])
 
 
 class TestOperators(unittest.TestCase):
