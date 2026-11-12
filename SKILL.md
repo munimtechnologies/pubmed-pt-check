@@ -1,6 +1,6 @@
 ---
 name: pubmed-pt-check
-description: Check PubMed search strings, saved search strategies, search filters or code for publication types ([pt]) and quoted MeSH headings ([mh]) that NLM renamed or discontinued, such as "Retraction of Publication" (now "Retraction Notice") or "Consensus Development Conference" (now "Consensus Statement"), which now silently match nothing. Use before running or publishing a PubMed search or filter, when a PubMed count looks too low or a NOT filter seems to do nothing, or when reviewing code that calls E-utilities.
+description: Check PubMed search strings, saved search strategies, search filters or code for publication types ([pt]) and quoted MeSH headings ([mh]) that NLM renamed or discontinued, such as "Retraction of Publication" (now "Retraction Notice"), "Consensus Development Conference" (now "Consensus Statement") or "Depressive Disorder, Major" (now "Major Depressive Disorder"), which now silently match nothing. Use before running or publishing a PubMed search or filter, when a PubMed count looks too low or a NOT filter seems to do nothing, or when reviewing code that calls E-utilities.
 license: Apache-2.0
 ---
 
@@ -8,11 +8,12 @@ license: Apache-2.0
 
 PubMed renamed three publication types: "Retraction of Publication" is now "Retraction Notice"
 (MeSH 2025), "Congress" is now "Conference Proceedings" and "Consensus Development Conference" is
-now "Consensus Statement" (MeSH 2026). MeSH 2026 also renamed the heading "Consensus Development
-Conferences as Topic" to "Consensus Statements as Topic". A quoted old name matches nothing. AND
-gives 0, OR silently drops the term, and NOT excludes nothing. PubMed only adds a warning.
-Published guideline filters lose up to a quarter of their records this way. Evidence: FINDINGS.md
-and FILTERS.md.
+now "Consensus Statement" (MeSH 2026). MeSH 2026 also renamed subject headings, among them
+"Depressive Disorder, Major" (now "Major Depressive Disorder"), "Pain, Postoperative" (now
+"Postoperative Pain") and "Consensus Development Conferences as Topic" (now "Consensus Statements
+as Topic"). A quoted old name matches nothing. AND gives 0, OR silently drops the term, and NOT
+excludes nothing. PubMed only adds a warning. Published guideline filters lose up to a quarter of
+their records this way. Evidence: FINDINGS.md, FILTERS.md and HEADINGS-2026.md.
 
 ## When to use
 
@@ -20,6 +21,8 @@ and FILTERS.md.
   `[ptyp]`, `[Publication Type]`, `[mh]`, `[mesh]` or `[majr]`.
 - When a PubMed or E-utilities count is unexpectedly low or zero, or a `NOT ...[pt]` exclusion
   seems to have no effect.
+- When re-running or updating a search strategy written before 2026 (review updates, living
+  reviews, saved searches).
 - When reviewing scripts (Python, R, shell) that build PubMed queries or E-utilities URLs.
 
 ## How

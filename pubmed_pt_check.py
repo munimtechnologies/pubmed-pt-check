@@ -27,6 +27,13 @@ when the term is not in quotes; a quoted old name ("..."[mh], [mesh], [majr], wi
 :noexp) finds nothing, exactly like an old publication-type name (checked 2026-11-12). Published
 guideline search filters quote their headings, so they lose these records silently.
 
+0.1.2: seven more MeSH 2026 heading renames, from NLM's list of 2026 changes that affected the NLM
+Classification (classification.nlm.nih.gov/scope), each checked in PubMed on 2026-11-12 (quoted
+old name -> 0 records and "quoted phrase not found"): Depressive Disorder, Major; Pain,
+Postoperative; Carcinoma, Basal Cell; Conscious Sedation; Pain, Intractable; Receptors, Kainic
+Acid; Surgical Procedures, Colorectal. NLM changed 42 descriptors for 2026; the others are not in
+the offline table yet, so use --live.
+
 This script reads search strings, saved strategies or source code, finds every term tagged [pt],
 [ptyp], [Publication Type], [mh], [mesh], [majr] or [MeSH Terms], and reports renamed and
 discontinued names with the effect that the surrounding Boolean operator has. --fix rewrites
@@ -51,13 +58,14 @@ import time
 import urllib.parse
 import urllib.request
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 MAILTO = "mv2@munimtech.com"
 TOOL = "pubmed-pt-check"
 UA = "pubmed-pt-check/%s (MV2, Munim, Inc.; mailto:%s)" % (VERSION, MAILTO)
 ESEARCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 SOURCE = ("NLM Technical Bulletin 2024 Nov-Dec (461):e4, 2026 Jan-Feb (468):e6 and 2026 Mar-Apr "
-          "(469):e1, https://www.nlm.nih.gov/pubs/techbull/ma26/ma26_pubmed_update_MeSH_changes.html")
+          "(469):e1, https://www.nlm.nih.gov/pubs/techbull/ma26/ma26_pubmed_update_MeSH_changes.html; "
+          "MeSH 2026 heading changes: https://classification.nlm.nih.gov/scope")
 
 
 def key(name):
@@ -84,12 +92,19 @@ DISCONTINUED = {key(n) for n in (
     "Scientific Integrity Review", "Seminal Article", "Technical Report")}
 # Renamed MeSH headings (descriptors). Only renames checked by hand against PubMed are listed;
 # --live finds others. D003245: "use CONSENSUS DEVELOPMENT CONFERENCES AS TOPIC 2008-2025".
+# The other seven are MeSH 2026 renames listed at classification.nlm.nih.gov/scope; on
+# 2026-11-12 each quoted old name gave 0 records with "quoted phrase not found".
 MESH_RENAMED = {
     key("Consensus Development Conferences as Topic"): "Consensus Statements as Topic",
+    key("Depressive Disorder, Major"): "Major Depressive Disorder",
+    key("Pain, Postoperative"): "Postoperative Pain",
+    key("Carcinoma, Basal Cell"): "Basal Cell Carcinoma",
+    key("Conscious Sedation"): "Procedural Sedation",
+    key("Pain, Intractable"): "Intractable Pain",
+    key("Receptors, Kainic Acid"): "Kainic Acid Receptors",
+    key("Surgical Procedures, Colorectal"): "Colorectal Surgical Procedures",
 }
-MESH_RENAMED_YEAR = {
-    key("Consensus Development Conferences as Topic"): 2026,
-}
+MESH_RENAMED_YEAR = {k: 2026 for k in MESH_RENAMED}
 NOTES = {
     key("Retraction of Publication"): "NLM's own Retraction filter now runs "
                                       "'hasretractionof OR retraction notice[pt]'.",

@@ -6,7 +6,10 @@
 The esearch replies below copy the shape and numbers of real E-utilities replies read on
 2026-11-11 (see FINDINGS.md). The MeSH tests (0.1.1) follow replies read on 2026-11-12:
 '"consensus development conferences as topic"[mh]' -> 0 with quotedphrasesnotfound; the same
-words unquoted -> mapped to "consensus statements as topic"[MeSH Terms], 5,436 records."""
+words unquoted -> mapped to "consensus statements as topic"[MeSH Terms], 5,436 records.
+The 0.1.2 tests follow replies read on 2026-11-12: '"Depressive Disorder, Major"[Mesh]' -> 0
+with quotedphrasesnotfound; 'Depressive Disorder, Major[mh]' unquoted -> "major depressive
+disorder"[MeSH Terms], 46,495 records (see HEADINGS-2026.md)."""
 import io
 import json
 import os
@@ -39,6 +42,18 @@ CDA_SNIPPET = ('"Clinical protocols"[MESH] OR "Consensus"[MESH] OR "Consensus de
                'conferences as topic"[MESH] OR "Guidelines as topic" [Mesh:NoExp] OR '
                '"guideline"[pt] OR "practice guideline"[pt] OR "consensus development '
                'conference"[pt] OR "consensus development conference, NIH"[pt]')
+
+# MeSH 2026 heading renames added in 0.1.2 (classification.nlm.nih.gov/scope; each quoted old
+# name checked in PubMed on 2026-11-12: 0 records, "quoted phrase not found").
+RENAMES_2026 = [
+    ("Depressive Disorder, Major", "Major Depressive Disorder"),
+    ("Pain, Postoperative", "Postoperative Pain"),
+    ("Carcinoma, Basal Cell", "Basal Cell Carcinoma"),
+    ("Conscious Sedation", "Procedural Sedation"),
+    ("Pain, Intractable", "Intractable Pain"),
+    ("Receptors, Kainic Acid", "Kainic Acid Receptors"),
+    ("Surgical Procedures, Colorectal", "Colorectal Surgical Procedures"),
+]
 
 
 def fake_fetch(url):
@@ -93,7 +108,7 @@ class TestParsing(unittest.TestCase):
     def test_seventeen_discontinued(self):
         self.assertEqual(len(p.DISCONTINUED), 17)
         self.assertEqual(len(p.RENAMED), 3)
-        self.assertEqual(len(p.MESH_RENAMED), 1)
+        self.assertEqual(len(p.MESH_RENAMED), 8)
 
     def test_rename_years(self):
         # NLM Tech Bull 2024 Nov-Dec (461):e4 and 2026 Jan-Feb (468):e6.
@@ -104,7 +119,7 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(set(p.MESH_RENAMED_YEAR), set(p.MESH_RENAMED))
 
     def test_version(self):
-        self.assertEqual(p.VERSION, "0.1.1")
+        self.assertEqual(p.VERSION, "0.1.2")
         self.assertNotIn("following the 2025 MeSH change", p.__doc__)
 
 
@@ -183,6 +198,48 @@ class TestMesh(unittest.TestCase):
                       out=out)
         self.assertEqual(code, 1)
         self.assertIn("does not recognize this MeSH heading", out.getvalue())
+
+
+class TestMesh2026Headings(unittest.TestCase):
+    def test_seven_more_renames(self):
+        for old, new in RENAMES_2026:
+            self.assertEqual(p.classify(old, "mesh", True), ("renamed", new), old)
+            self.assertEqual(p.classify(old.upper(), "mesh", False), ("renamed_mapped", new), old)
+            self.assertEqual(p.MESH_RENAMED_YEAR[p.key(old)], 2026, old)
+            self.assertEqual(p.classify(new, "mesh", True), ("ok", None), new)
+            # as a publication type these names mean nothing special
+            self.assertEqual(p.classify(old, "pt", True), ("ok", None), old)
+
+    def test_depression_strategy_line(self):
+        q = '("Depressive Disorder, Major"[Mesh] OR depress*[tiab]) AND "Ketamine"[Mesh]'
+        f = [x for x in p.check_text(q) if x["status"] != "ok"]
+        self.assertEqual(len(f), 1)
+        self.assertEqual(f[0]["term"], "Depressive Disorder, Major")
+        self.assertEqual((f[0]["operator"], f[0]["side"]), ("OR", "after"))
+        self.assertIn('records indexed with "Major Depressive Disorder"', f[0]["effect"])
+        self.assertEqual(f[0]["mesh_year"], 2026)
+        self.assertTrue(p.is_problem(f[0]))
+        self.assertEqual(p.main([q], out=io.StringIO()), 1)
+
+    def test_fix_comma_headings(self):
+        self.assertEqual(
+            p.fix_text('"Pain, Postoperative"[Mesh] OR "Depressive Disorder, Major"[mh:noexp]'),
+            '"Postoperative Pain"[Mesh] OR "Major Depressive Disorder"[mh:noexp]')
+
+    def test_unquoted_comma_heading_is_mapped(self):
+        out = io.StringIO()
+        code = p.main(["ketamine AND depressive disorder, major[mh]"], out=out)
+        self.assertEqual(code, 0)
+        self.assertIn('renamed to "Major Depressive Disorder" (MeSH 2026); mapped because '
+                      'unquoted.', out.getvalue())
+
+    def test_url_encoded_link_in_file(self):
+        text = ("https://pubmed.ncbi.nlm.nih.gov/?term=%22Conscious+Sedation%22%5BMesh%5D"
+                "+AND+endoscopy%5Btiab%5D\n")
+        f = [x for x in p.scan_lines(text, "links.txt") if x["status"] != "ok"]
+        self.assertEqual(len(f), 1)
+        self.assertEqual((f[0]["new_name"], f[0]["operator"]), ("Procedural Sedation", "AND"))
+        self.assertIn("0 records", f[0]["effect"])
 
 
 class TestOperators(unittest.TestCase):
