@@ -27,6 +27,10 @@ Unquoted, an old name still maps to the new heading: `Tobacco[mh]` is translated
 `Disabled Persons[mh]` map to the new headings. Deleted headings do not map: `Meta-Research[mh]`,
 unquoted, also gives 0.
 
+**MeSH 2027 is next.** NLM's 2027 preview files are already public. Before PubMed switches, we
+are listing which quoted headings will stop working; the method and predictions are fixed in
+[PREREG-MESH-2027.md](PREREG-MESH-2027.md).
+
 ## Does it matter in practice? Three published searches re-run
 
 We searched Europe PMC for open-access reviews published from mid-2025 on that print a PubMed
@@ -223,17 +227,36 @@ Also for 2024: Health Disparate, Minority and Vulnerable Populations lost its co
    above). The remaining 2024/2025 names were ORed in two batches, and no phrase was reported
    missing.
 
+## Cross-check against BIREME's 2026 list
+
+BIREME's DeCS (the trilingual vocabulary built on MeSH) publishes its own list of 2026 changed
+descriptors (https://decs.bvsalud.org/en/2026-changed-descriptors/, read 2026-11-12; 28 rows).
+We compared it with our census:
+
+- **21 of its 28 rows are MeSH renames, and all 21 are in our census:** 18 headings plus the 3
+  publication types (Classical Article, Congress, Consensus Development Conference).
+- **Its other 7 rows are not MeSH headings.** Screens, Infrastructure, Resources for Research,
+  Collection Routes, Manual Segregation, Physicochemical Treatment and Endogenous Respiration are
+  DeCS's own descriptors. A SPARQL query of the current MeSH graph for their new names (Mechanical
+  Screens, Research Infrastructure, and so on) returned no topical descriptor; the same query found
+  Bacillota and Food Markets.
+- **It leaves out 20 of our 38 heading renames**, among them Depressive Disorder, Major; Pain,
+  Postoperative; Carcinoma, Basal Cell; Receptor, ErbB-2; Scoping Review as Topic and Gulf of
+  Mexico. 10 of the 20 only change word order, or order and case (inversions such as Pain,
+  Postoperative to Postoperative Pain). Quoted, their old names give 0 in PubMed all the same.
+
 ## Prior art
 
 NLM publishes lists of changed descriptors (for example "MeSH Descriptors Changed 2024",
-linked from https://www.nlm.nih.gov/mesh/whatsnew.html), and BIREME's DeCS lists the 2025
-changes (https://decs.bvsalud.org/en/2025-changed-descriptors/). PubMed's help says a quoted
-phrase is not mapped to MeSH. A web search on 2026-11-12 surfaced a LinkedIn post, reported as by
-Eitan Agai from around 2 November 2026, that makes the same point for `"Pregnant Women"[Mesh]`
-with the same 3,574 figure. We could not open LinkedIn to read it ourselves, so we know it only
-from the search engine's summary. Our own [HEADINGS-2026.md](HEADINGS-2026.md) covered 8 of the
-2026 renames. We found no list that tests every renamed heading across years in PubMed, gives
-controls, or re-runs published strategies. If one exists, tell us and we will link it.
+linked from https://www.nlm.nih.gov/mesh/whatsnew.html), and BIREME's DeCS lists the 2025 and 2026
+changes (https://decs.bvsalud.org/en/2025-changed-descriptors/; 2026 above). PubMed's help says a
+quoted phrase is not mapped to MeSH. A web search on 2026-11-12 surfaced a LinkedIn post, reported
+as by Eitan Agai from around 2 November 2026, that makes the same point for
+`"Pregnant Women"[Mesh]` with the same 3,574 figure. We could not open LinkedIn to read it
+ourselves, so we know it only from the search engine's summary. Our own
+[HEADINGS-2026.md](HEADINGS-2026.md) covered 8 of the 2026 renames. We found no list that tests
+every renamed heading across years in PubMed, gives controls, or re-runs published strategies. If
+one exists, tell us and we will link it.
 
 ## Limits
 
@@ -248,8 +271,8 @@ controls, or re-runs published strategies. If one exists, tell us and we will li
 - The three re-runs are a convenience sample from one Europe PMC query. They show the range of
   cost, not how often it happens. In two of the three the loss was zero.
 - MeSH 2027 is in preview at NLM now. Its renames will reach PubMed at the year-end changeover and
-  are not in this list yet. `pubmed_pt_check.py --live` checks any quoted heading against PubMed
-  as it is.
+  are not in this list yet; see [PREREG-MESH-2027.md](PREREG-MESH-2027.md).
+  `pubmed_pt_check.py --live` checks any quoted heading against PubMed as it is.
 
 ## Check your own strategy
 
