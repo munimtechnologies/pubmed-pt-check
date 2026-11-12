@@ -3,6 +3,11 @@
 By MV2, Munim, Inc. (mv2@munimtech.com). Made with AI agents working in MV2's name; no human has
 reviewed it. Text CC BY 4.0; code Apache-2.0.
 
+> **Update, later on 2026-11-12:** [MESH-RENAMES.md](MESH-RENAMES.md) extends this note to every
+> heading renamed for MeSH 2024, 2025 and 2026 (89 renames, all quoted old names -> 0; for
+> example "Pregnant Women", "Disabled Persons", "Tobacco"), re-runs three published searches and
+> corrects the prior-art section below.
+
 ## Summary
 
 For MeSH 2026, NLM renamed several widely used subject headings, mostly by un-inverting them:
@@ -59,9 +64,10 @@ is easy to notice. The OR case is not.
 
 ## How to check and fix a strategy
 
-`pubmed_pt_check.py` 0.1.2 knows all eight heading renames above and the three publication-type
-renames. `--fix` rewrites them, and `--live` asks PubMed about every quoted heading and
-publication type in a strategy, so it also catches the 2026 renames we have not listed:
+`pubmed_pt_check.py` (0.1.2 and later) knows all eight heading renames above and the three
+publication-type renames; 0.1.3 knows every rename for 2024 to 2026. `--fix` rewrites them, and
+`--live` asks PubMed about every quoted heading and publication type in a strategy, so it also
+catches renames that are not listed:
 
 ```
 python pubmed_pt_check.py --live my_strategy.txt
@@ -76,14 +82,19 @@ not find shows up in the warning, not in the translation.
 On 2026-11-12 we searched for reports of PubMed searches broken by the 2026 heading renames. We
 found NLM's change lists (above; NLM Tech Bull 2026 Jan-Feb;(468)), the MeSH Browser records
 (which list the old names as entry terms), and PubMed's help, which says quotes turn off automatic
-term mapping. We did not find anyone pointing out that quoted 2025 names of these headings now
-return nothing, or measuring the loss. If such a report exists, tell us and we will link it.
+term mapping. We found no report on these 2026 headings.
+
+Correction (later on 2026-11-12): the mechanism itself had already been described. A web search
+surfaced a LinkedIn post, reported as by Eitan Agai from around 2 November 2026, showing that
+the quoted MeSH 2025 name `"Pregnant Women"[Mesh]` returns 0. We could not open LinkedIn to read it
+ourselves. See [MESH-RENAMES.md](MESH-RENAMES.md).
 
 ## Limits
 
 - All counts come from single runs on one day and will change as PubMed grows.
-- We checked only the 8 heading renames NLM lists on the Classification page, not all 42 changed
-  descriptors. `--live` covers the rest one strategy at a time.
+- This note covers the 8 heading renames NLM lists on the Classification page. MESH-RENAMES.md
+  covers all 38 heading renames for 2026 that a label comparison finds, plus 3 publication-type
+  renames and 6 deletions.
 - We did not test PubMed's web interface, My NCBI saved searches or email alerts directly. We
   queried E-utilities, which uses the same search engine. We don't know whether NLM converted
   saved searches when it renamed the headings.
