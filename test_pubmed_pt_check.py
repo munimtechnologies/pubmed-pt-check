@@ -18,7 +18,12 @@ The 0.1.4 tests follow the MeSH 2019-2023 RDF comparison and the PubMed checks o
 quotedphrasesnotfound; '"Neural Networks, Computer"[mh]' -> 112,589; 'Cervical Intraepithelial
 Neoplasia[mh]' unquoted -> "uterine cervical dysplasia"[MeSH Terms], 16,122; quoted -> not found;
 '"Protein-Serine-Threonine Kinases"[mh]' and '"Pyruvate Dehydrogenase (Acetyl-Transferring)
-Kinase"[mh]' recognized."""
+Kinase"[mh]' recognized.
+The 0.1.5 tests follow the MeSH 2015-2019 RDF comparison, NLM's bulletins for 2017-2019 and the
+PubMed checks of 2026-11-12 (see MESH-RENAMES-2016-2019.md): '"Great Britain"[Mesh]' -> quoted
+phrase not found; 'Great Britain[mh]' unquoted -> "united kingdom"[MeSH Terms], 418,425;
+'Food Habits[mh]' -> "feeding behavior"[MeSH Terms]; 'Pneumocystis jirovecii[mh]' unquoted -> 0
+("jirovecii" not found); '"Congresses"[pt]' -> quoted phrase not found."""
 import io
 import json
 import os
@@ -132,8 +137,8 @@ class TestParsing(unittest.TestCase):
 
     def test_seventeen_discontinued(self):
         self.assertEqual(len(p.DISCONTINUED), 17)
-        self.assertEqual(len(p.RENAMED), 8)
-        self.assertEqual(len(p.MESH_RENAMED), 249)
+        self.assertEqual(len(p.RENAMED), 20)
+        self.assertEqual(len(p.MESH_RENAMED), 552)
 
     def test_rename_years(self):
         # NLM Tech Bull 2024 Nov-Dec (461):e4 and 2026 Jan-Feb (468):e6; MeSH RDF for D016419.
@@ -145,7 +150,7 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(set(p.MESH_RENAMED_YEAR), set(p.MESH_RENAMED))
 
     def test_version(self):
-        self.assertEqual(p.VERSION, "0.1.4")
+        self.assertEqual(p.VERSION, "0.1.5")
         self.assertNotIn("following the 2025 MeSH change", p.__doc__)
 
 
@@ -270,16 +275,16 @@ class TestMesh2026Headings(unittest.TestCase):
 
 class TestMeshCensus(unittest.TestCase):
     """0.1.3: every MeSH 2024, 2025 and 2026 heading rename, plus the 2026 deletions.
-    0.1.4: MeSH 2020 to 2023 added."""
+    0.1.4: MeSH 2020 to 2023 added. 0.1.5: MeSH 2016 to 2019 added."""
 
     def test_counts_per_year(self):
         years = list(p.MESH_RENAMED_YEAR.values())
         self.assertEqual(tuple(years.count(y) for y in range(2020, 2027)),
                          (91, 11, 23, 34, 22, 30, 38))
-        self.assertEqual(len(p.MESH_RENAMES), 249)
-        self.assertEqual(len(p.MESH_DELETED), 6)
-        self.assertEqual(set(p.MESH_DELETED.values()), {2026})
-        self.assertEqual(len(p.MESH_REPLACED), 8)
+        self.assertEqual(len(p.MESH_RENAMES), 552)
+        self.assertEqual(len(p.MESH_DELETED), 13)
+        self.assertEqual(set(p.MESH_DELETED.values()), {2016, 2017, 2019, 2026})
+        self.assertEqual(len(p.MESH_REPLACED), 66)
         self.assertTrue(p.MESH_REPLACED <= set(p.MESH_RENAMED))
 
     def test_current_names_are_not_old_names(self):
@@ -461,6 +466,112 @@ class TestMesh2020To2023(unittest.TestCase):
         f = [x for x in p.check_text('"Government Document"[pt]') if x["status"] != "ok"]
         self.assertEqual(len(f), 1)
         self.assertIn("discontinued types", f[0]["note"])
+
+
+class TestMesh2016To2019(unittest.TestCase):
+    """0.1.5: MeSH 2016-2019 renames and deletions (MeSH RDF 2015-2019; NLM bulletins for 2017,
+    2018 and 2019; PubMed checks of 2026-11-12)."""
+
+    def test_counts_2016_to_2019(self):
+        years = list(p.MESH_RENAMED_YEAR.values())
+        self.assertEqual(tuple(years.count(y) for y in range(2016, 2020)), (54, 74, 112, 63))
+        self.assertEqual(len(p.MESH_REPLACED_2016_2019), 58)
+
+    def test_widely_used_2016_to_2019(self):
+        cases = [("Questionnaires", "Surveys and Questionnaires", 2016),
+                 ("Biological Markers", "Biomarkers", 2016),
+                 ("Great Britain", "United Kingdom", 2017),
+                 ("Mild Cognitive Impairment", "Cognitive Dysfunction", 2017),
+                 ("Metabolic Syndrome X", "Metabolic Syndrome", 2018),
+                 ("Cell Aging", "Cellular Senescence", 2018),
+                 ("Cognitive Therapy", "Cognitive Behavioral Therapy", 2019),
+                 ("Health Manpower", "Health Workforce", 2019)]
+        for old, new, year in cases:
+            self.assertEqual(p.classify(old, "mesh", True), ("renamed", new), old)
+            self.assertEqual(p.classify(old, "mesh", False), ("renamed_mapped", new), old)
+            self.assertEqual(p.MESH_RENAMED_YEAR[p.key(old)], year, old)
+
+    def test_uk_strategy(self):
+        q = '("Great Britain"[Mesh] OR uk[tiab] OR britain[tiab])'
+        f = [x for x in p.check_text(q) if x["status"] != "ok"]
+        self.assertEqual(len(f), 1)
+        self.assertEqual((f[0]["status"], f[0]["new_name"]), ("renamed", "United Kingdom"))
+        self.assertEqual((f[0]["operator"], f[0]["side"]), ("OR", "after"))
+        self.assertEqual(f[0]["mesh_year"], 2017)
+        self.assertIn('silently misses records indexed with "United Kingdom"', f[0]["effect"])
+        self.assertTrue(p.is_problem(f[0]))
+        self.assertEqual(p.main([q], out=io.StringIO()), 1)
+        self.assertEqual(p.fix_text(q), '("United Kingdom"[Mesh] OR uk[tiab] OR britain[tiab])')
+
+    def test_chains_2016_to_2019(self):
+        m = p.MESH_RENAMED
+        self.assertEqual(m[p.key("Gypsies")], "Romani People")
+        self.assertEqual(m[p.key("Hemoglobin A, Glycosylated")], "Glycated Hemoglobin")
+        self.assertEqual(m[p.key("Institute of Medicine (U.S.)")],
+                         "National Academies of Science, Engineering, and Medicine, U.S., Health "
+                         "and Medicine Division")
+        for old in ("Nondirective Therapy", "Person-Centered Therapy"):
+            self.assertEqual(m[p.key(old)], "Person-Centered Psychotherapy", old)
+        for old in ("P-Glycoprotein", "ATP-Binding Cassette, Sub-Family B, Member 1"):
+            self.assertEqual(m[p.key(old)],
+                             "ATP Binding Cassette Transporter, Subfamily B, Member 1", old)
+        self.assertEqual(m[p.key("Antigens, CD9")], "Tetraspanin 29")
+
+    def test_replaced_food_habits(self):
+        q = '"Food Habits"[mh] AND child*[tiab]'
+        out = io.StringIO()
+        self.assertEqual(p.main([q], out=out), 1)
+        self.assertIn('replaced by "Feeding Behavior" (MeSH 2017).', out.getvalue())
+        self.assertIn("0 records", out.getvalue())
+        self.assertEqual(p.fix_text(q), '"Feeding Behavior"[mh] AND child*[tiab]')
+
+    def test_egfr_unquoted_is_mapped(self):
+        self.assertEqual(p.classify("Receptor, Epidermal Growth Factor", "mesh", False),
+                         ("renamed_mapped", "ErbB Receptors"))
+        self.assertEqual(p.MESH_RENAMED_YEAR[p.key("Receptor, Epidermal Growth Factor")], 2019)
+        out = io.StringIO()
+        self.assertEqual(p.main(["egfr[tiab] OR receptor, epidermal growth factor[mh]"], out=out),
+                         0)
+        self.assertIn('replaced by "ErbB Receptors" (MeSH 2019); mapped because unquoted.',
+                      out.getvalue())
+
+    def test_deleted_without_replacement(self):
+        self.assertEqual(p.classify("Pneumocystis jirovecii", "mesh", False), ("deleted", None))
+        self.assertEqual(p.classify("Intervention Studies", "mesh", True), ("deleted", None))
+        self.assertEqual(p.MESH_DELETED[p.key("Intervention Studies")], 2016)
+        self.assertEqual(p.MESH_DELETED[p.key("Pneumocystis jirovecii")], 2017)
+        q = '"Intervention Studies"[mh] AND diet[tiab]'
+        out = io.StringIO()
+        self.assertEqual(p.main([q], out=out), 1)
+        self.assertIn("heading deleted (MeSH 2016); replace it by hand.", out.getvalue())
+        self.assertEqual(p.fix_text(q), q)
+
+    def test_names_that_still_work(self):
+        # Case or hyphen only, restored or reused names, and headings that became catalog
+        # publication types: PubMed still recognizes each quoted (checked 2026-11-12) or they
+        # are not search headings any more, so they are not listed.
+        for name in ("Avian leukosis virus", "Classical swine fever virus", "Salt-Tolerance",
+                     "Tetraspanin-29", "Tetraspanin-25", "Bosnia-Herzegovina", "Eugenia",
+                     "Pharmacological Phenomena", "Lotus", "Rhamnus", "Salicaceae",
+                     "Dictionaries, Polyglot as Topic", "Catalogs, Booksellers'"):
+            self.assertEqual(p.classify(name, "mesh", True), ("ok", None), name)
+
+    def test_2019_publication_types(self):
+        self.assertEqual(p.classify("Congresses"), ("renamed", "Conference Proceedings"))
+        self.assertEqual(p.classify("Personal Narratives"), ("renamed", "Personal Narrative"))
+        self.assertEqual(p.classify("government publications"),
+                         ("renamed", "Government Publication"))
+        self.assertEqual(p.RENAMED_YEAR[p.key("Lectures")], 2019)
+        self.assertEqual(p.classify("Personal Narrative"), ("ok", None))
+        self.assertEqual(p.classify("Legal Case"), ("discontinued", None))
+        # catalog-only types renamed for 2019 are not listed: PubMed finds neither name
+        self.assertEqual(p.classify("Book Reviews"), ("ok", None))
+        self.assertEqual(p.fix_text('"Congresses"[pt] OR "Addresses"[pt]'),
+                         '"Conference Proceedings"[pt] OR "Address"[pt]')
+        f = [x for x in p.check_text('"Congresses"[pt]') if x["status"] != "ok"]
+        self.assertEqual(len(f), 1)
+        self.assertEqual(f[0]["mesh_year"], 2019)
+        self.assertIn("MeSH 2019", f[0]["note"])
 
 
 class TestOperators(unittest.TestCase):
