@@ -5,13 +5,14 @@
 """pubmed-pt-check: find PubMed publication types and MeSH headings that PubMed no longer
 recognizes under the name a search uses.
 
-NLM renamed three PubMed publication types, in two MeSH years: "Retraction of Publication" is
+NLM renamed four PubMed publication types, in two MeSH years: "Retraction of Publication" is
 now "Retraction Notice" (MeSH 2025, NLM Tech Bull 2024 Nov-Dec;(461):e4); "Congress" is now
 "Conference Proceedings" and "Consensus Development Conference" is now "Consensus Statement"
-(MeSH 2026, NLM Tech Bull 2026 Jan-Feb;(468):e6). PubMed's article-type filters followed in
-March 2026 (NLM Tech Bull 2026 Mar-Apr;(469):e1). Checked against E-utilities on 2026-11-11, the
-old names no longer match anything in a [pt] search: PubMed treats the term as an empty set and
-only adds a "quoted phrase not found" warning.
+(MeSH 2026, NLM Tech Bull 2026 Jan-Feb;(468):e6); "Classical Article" is now "Seminal Article"
+(MeSH 2026, found by comparing NLM's MeSH 2025 and 2026 RDF). PubMed's article-type filters
+followed in March 2026 (NLM Tech Bull 2026 Mar-Apr;(469):e1). Checked against E-utilities on
+2026-11-11/12, the old names no longer match anything in a [pt] search: PubMed treats the term as
+an empty set and only adds a "quoted phrase not found" warning.
 
 - alone or joined with AND: the search (or AND clause) finds 0 records;
 - joined with OR: the term is dropped and the rest of the OR group runs, so the result silently
@@ -21,33 +22,31 @@ only adds a "quoted phrase not found" warning.
 Seventeen more types were discontinued: older citations keep them and they are still searchable,
 but new citations no longer get them.
 
-0.1.1: MeSH headings too. MeSH 2026 renamed the heading "Consensus Development Conferences as
-Topic" to "Consensus Statements as Topic". PubMed maps an old heading name to the new one only
-when the term is not in quotes; a quoted old name ("..."[mh], [mesh], [majr], with or without
-:noexp) finds nothing, exactly like an old publication-type name (checked 2026-11-12). Published
-guideline search filters quote their headings, so they lose these records silently.
-
-0.1.2: seven more MeSH 2026 heading renames, from NLM's list of 2026 changes that affected the NLM
-Classification (classification.nlm.nih.gov/scope), each checked in PubMed on 2026-11-12 (quoted
-old name -> 0 records and "quoted phrase not found"): Depressive Disorder, Major; Pain,
-Postoperative; Carcinoma, Basal Cell; Conscious Sedation; Pain, Intractable; Receptors, Kainic
-Acid; Surgical Procedures, Colorectal. NLM changed 42 descriptors for 2026; the others are not in
-the offline table yet, so use --live.
+MeSH headings behave the same way. PubMed maps an old heading name to the new one only when the
+term is not in quotes; a quoted old name ("..."[mh], [mesh], [majr], with or without :noexp)
+finds nothing. 0.1.1 and 0.1.2 listed eight MeSH 2026 renames. 0.1.3 lists every heading NLM
+renamed in MeSH 2024, 2025 and 2026 (89 renames: 21, 30 and 38), found by comparing the yearly
+MeSH RDF graphs at id.nlm.nih.gov/mesh/sparql, and the 6 headings deleted for 2026. On
+2026-11-12 every quoted old name, and every deleted heading, gave 0 records in PubMed with
+"quoted phrase not found"; every new name was recognized. Renames that only changed letter case
+or punctuation (Tinea cruris; Health Disparate, Minority and Vulnerable Populations) still work
+and are not listed. See MESH-RENAMES.md.
 
 This script reads search strings, saved strategies or source code, finds every term tagged [pt],
-[ptyp], [Publication Type], [mh], [mesh], [majr] or [MeSH Terms], and reports renamed and
-discontinued names with the effect that the surrounding Boolean operator has. --fix rewrites
+[ptyp], [Publication Type], [mh], [mesh], [majr] or [MeSH Terms], and reports renamed, deleted
+and discontinued names with the effect that the surrounding Boolean operator has. --fix rewrites
 renamed names; --live asks PubMed itself (E-utilities esearch) whether each publication type and
 each quoted MeSH heading in the input is recognized today, which also catches renames this script
 does not know about yet.
 
     python pubmed_pt_check.py '"Cochrane Database Syst Rev"[ta] NOT "Retraction of Publication"[pt]'
     python pubmed_pt_check.py --live search_strategy.txt
-    python pubmed_pt_check.py --fix '("Retraction of Publication"[pt] OR "Retracted Publication"[pt])'
+    python pubmed_pt_check.py --fix '("Pregnant Women"[Mesh] OR pregnan*[tiab])'
 
-Exit codes: 0 = nothing renamed or unrecognized; 1 = at least one renamed or unrecognized
-publication type or quoted MeSH heading; 2 = bad input or a failed --live lookup. Python 3.8+,
-standard library only; --live makes read-only HTTPS GETs to eutils.ncbi.nlm.nih.gov (no API key).
+Exit codes: 0 = nothing renamed, deleted or unrecognized; 1 = at least one renamed or
+unrecognized publication type or quoted MeSH heading, or a deleted heading; 2 = bad input or a
+failed --live lookup. Python 3.8+, standard library only; --live makes read-only HTTPS GETs to
+eutils.ncbi.nlm.nih.gov (no API key).
 """
 import argparse
 import json
@@ -58,14 +57,15 @@ import time
 import urllib.parse
 import urllib.request
 
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 MAILTO = "mv2@munimtech.com"
 TOOL = "pubmed-pt-check"
 UA = "pubmed-pt-check/%s (MV2, Munim, Inc.; mailto:%s)" % (VERSION, MAILTO)
 ESEARCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 SOURCE = ("NLM Technical Bulletin 2024 Nov-Dec (461):e4, 2026 Jan-Feb (468):e6 and 2026 Mar-Apr "
           "(469):e1, https://www.nlm.nih.gov/pubs/techbull/ma26/ma26_pubmed_update_MeSH_changes.html; "
-          "MeSH 2026 heading changes: https://classification.nlm.nih.gov/scope")
+          "MeSH RDF yearly graphs 2023-2026, https://id.nlm.nih.gov/mesh/sparql (compared "
+          "2026-11-12)")
 
 
 def key(name):
@@ -77,12 +77,15 @@ RENAMED = {
     key("Retraction of Publication"): "Retraction Notice",
     key("Congress"): "Conference Proceedings",
     key("Consensus Development Conference"): "Consensus Statement",
+    key("Classical Article"): "Seminal Article",
 }
-# MeSH year of each rename (NLM Technical Bulletins 461:e4 and 468:e6).
+# MeSH year of each rename (NLM Technical Bulletins 461:e4 and 468:e6; Classical Article from
+# the MeSH 2025 vs 2026 RDF, D016419).
 RENAMED_YEAR = {
     key("Retraction of Publication"): 2025,
     key("Congress"): 2026,
     key("Consensus Development Conference"): 2026,
+    key("Classical Article"): 2026,
 }
 DISCONTINUED = {key(n) for n in (
     "Autobiography", "Bibliography", "Clinical Conference",
@@ -90,24 +93,123 @@ DISCONTINUED = {key(n) for n in (
     "Government Publication", "Interactive Tutorial", "Legal Case", "Legislation",
     "Newspaper Article", "Overall", "Periodical Index", "Portrait",
     "Scientific Integrity Review", "Seminal Article", "Technical Report")}
-# Renamed MeSH headings (descriptors). Only renames checked by hand against PubMed are listed;
-# --live finds others. D003245: "use CONSENSUS DEVELOPMENT CONFERENCES AS TOPIC 2008-2025".
-# The other seven are MeSH 2026 renames listed at classification.nlm.nih.gov/scope; on
-# 2026-11-12 each quoted old name gave 0 records with "quoted phrase not found".
-MESH_RENAMED = {
-    key("Consensus Development Conferences as Topic"): "Consensus Statements as Topic",
-    key("Depressive Disorder, Major"): "Major Depressive Disorder",
-    key("Pain, Postoperative"): "Postoperative Pain",
-    key("Carcinoma, Basal Cell"): "Basal Cell Carcinoma",
-    key("Conscious Sedation"): "Procedural Sedation",
-    key("Pain, Intractable"): "Intractable Pain",
-    key("Receptors, Kainic Acid"): "Kainic Acid Receptors",
-    key("Surgical Procedures, Colorectal"): "Colorectal Surgical Procedures",
-}
-MESH_RENAMED_YEAR = {k: 2026 for k in MESH_RENAMED}
+
+# Renamed MeSH headings (descriptors): (old name, current name, MeSH year of the rename).
+# Found by comparing the English rdfs:label of every descriptor in NLM's yearly MeSH RDF graphs
+# (2023 vs 2024, 2024 vs 2025, 2025 vs 2026). On 2026-11-12 every quoted old name below gave 0
+# records in PubMed with "quoted phrase not found", and every current name was recognized.
+# A descriptor renamed twice maps both old names to its current name.
+MESH_RENAMES = [
+    # MeSH 2024
+    ("Cyclophilin D", "Peptidyl-Prolyl Isomerase F", 2024),
+    ("Tyrosine Protein Kinase Inhibitors", "Tyrosine Kinase Inhibitors", 2024),
+    ("Phaeophyta", "Phaeophyceae", 2024),
+    ("Biopterin", "Biopterins", 2024),
+    ("Castor Bean", "Ricinus communis", 2024),
+    ("2,5-Dimethoxy-4-Methylamphetamine", "DOM 2,5-Dimethoxy-4-Methylamphetamine", 2024),
+    ("Influenzavirus C", "Gammainfluenzavirus", 2024),
+    ("Soybeans", "Glycine max", 2024),
+    ("Tobacco", "Nicotiana", 2024),
+    ("Russell's Viper", "Daboia", 2024),
+    ("Peas", "Pisum sativum", 2024),
+    ("Lettuce", "Lactuca", 2024),
+    ("Chicory", "Cichorium intybus", 2024),
+    ("Ginger", "Zingiber officinale", 2024),
+    ("Milk Thistle", "Silybum marianum", 2024),
+    ("Influenzavirus A", "Alphainfluenzavirus", 2024),
+    ("Influenzavirus B", "Betainfluenzavirus", 2024),
+    ("Monkeypox", "Mpox, Monkeypox", 2024),
+    ("Lysosome-Associated Membrane Glycoproteins", "Lysosomal Membrane Proteins", 2024),
+    ("Extreme Cold Weather", "Extreme Cold", 2024),
+    ("Hyalinosis, Systemic", "Hyaline Fibromatosis Syndrome", 2024),
+    # MeSH 2025
+    ("Abortion, Criminal", "Abortion, Illegal", 2025),
+    ("Network Meta-Analysis", "Network Meta-Analysis as Topic", 2025),
+    ("Obesity, Maternal", "Pregnancy in Obesity", 2025),
+    ("Medicine, Persian", "Medicine, Iranian Traditional", 2025),
+    ("Channa punctatus", "Channa punctata", 2025),
+    ("Commitment of Mentally Ill", "Commitment of Persons with Psychiatric Disorders", 2025),
+    ("Communication Aids for Disabled", "Communication Devices for People with Disabilities",
+     2025),
+    ("Dental Care for Disabled", "Dental Care for Persons with Disabilities", 2025),
+    ("Education of Intellectually Disabled", "Education of Persons with Intellectual Disabilities",
+     2025),
+    ("Health Care Facilities, Manpower, and Services",
+     "Health Care Facilities Workforce and Services", 2025),
+    ("Disabled Persons", "Persons with Disabilities", 2025),
+    ("Surrogate Mothers", "Gestational Carriers", 2025),
+    ("Trityl Compounds", "Triphenylmethyl Compounds", 2025),
+    ("Urodela", "Caudata", 2025),
+    ("Lymphatic Vessel Tumors", "Neoplasm, Lymphatic Tissue", 2025),
+    ("Fibromatosis, Aggressive", "Desmoid Tumors", 2025),
+    ("Condoms, Female", "Single-Use Internal Condom", 2025),
+    ("Persons With Hearing Impairments", "Persons with Hearing Disabilities", 2025),
+    ("Visually Impaired Persons", "Persons with Visual Disabilities", 2025),
+    ("Disabled Children", "Children with Disabilities", 2025),
+    ("Persons with Mental Disabilities", "Persons with Intellectual Disabilities", 2025),
+    ("Mentally Ill Persons", "Persons with Psychiatric Disorders", 2025),
+    ("Pregnant Women", "Pregnant People", 2025),
+    ("Mental Retardation, X-Linked", "X-Linked Intellectual Disability", 2025),
+    ("Native Hawaiian or Other Pacific Islander", "Native Hawaiian or Pacific Islander", 2025),
+    ("Mpox (monkeypox)", "Mpox, Monkeypox", 2025),
+    ("Sex Reassignment Procedures", "Gender-Affirming Procedures", 2025),
+    ("Sex Reassignment Surgery", "Gender-Affirming Surgery", 2025),
+    ("Education of Visually Disabled", "Education of Persons with Visual Disabilities", 2025),
+    ("Education of Hearing Disabled", "Education of Persons with Hearing Disabilities", 2025),
+    # MeSH 2026
+    ("Clostridiales", "Eubacteriales", 2026),
+    ("Firmicutes", "Bacillota", 2026),
+    ("Lactobacillus pentosus", "Lactiplantibacillus pentosus", 2026),
+    ("Pain, Procedural", "Procedural Pain", 2026),
+    ("Supermarkets", "Food Markets", 2026),
+    ("Melanoma, Cutaneous Malignant", "Cutaneous Malignant Melanoma", 2026),
+    ("Flighted Spongy Moth Complex", "Lymantria dispar", 2026),
+    ("Scoping Review as Topic", "Scoping Reviews as Topic", 2026),
+    ("Surgical Procedures, Colorectal", "Colorectal Surgical Procedures", 2026),
+    ("Nightclubs", "Drinking Establishments", 2026),
+    ("Carcinoma, Basal Cell", "Basal Cell Carcinoma", 2026),
+    ("Consensus Development Conferences as Topic", "Consensus Statements as Topic", 2026),
+    ("Depressive Disorder, Major", "Major Depressive Disorder", 2026),
+    ("Fetal Membranes, Premature Rupture", "Premature Rupture of Fetal Membranes", 2026),
+    ("Roma", "Romani People", 2026),
+    ("Heparitin Sulfate", "Heparan Sulfate", 2026),
+    ("Pain, Intractable", "Intractable Pain", 2026),
+    ("Pain, Postoperative", "Postoperative Pain", 2026),
+    ("Conscious Sedation", "Procedural Sedation", 2026),
+    ("Receptors, Kainic Acid", "Kainic Acid Receptors", 2026),
+    ("Receptor, ErbB-2", "Erb-b2 Receptor Tyrosine Kinases", 2026),
+    ("Multidrug Resistance-Associated Proteins", "ATP-Binding Cassette, Sub-Family C Proteins",
+     2026),
+    ("Fumariaceae", "Fumarioideae", 2026),
+    ("Clostridium bifermentans", "Paraclostridium bifermentans", 2026),
+    ("Clostridium cellulolyticum", "Ruminiclostridium cellulolyticum", 2026),
+    ("Clostridium histolyticum", "Hathewaya histolytica", 2026),
+    ("Clostridium sordellii", "Paraclostridium sordellii", 2026),
+    ("Clostridium sticklandii", "Acetoanaerobium sticklandii", 2026),
+    ("Clostridium thermocellum", "Acetivibrio thermocellus", 2026),
+    ("Lactobacillus plantarum", "Lactiplantibacillus plantarum", 2026),
+    ("Basic Helix-Loop-Helix Transcription Factors", "Basic Helix-Loop-Helix Proteins", 2026),
+    ("Fragile X Mental Retardation Protein", "Fragile X Messenger Ribonucleoprotein 1", 2026),
+    ("Feminine Hygiene Products", "Hygiene Products", 2026),
+    ("Pain, Referred", "Referred Pain", 2026),
+    ("Gulf of Mexico", "Gulf of America", 2026),
+    ("Dual MEDICAID MEDICARE Eligibility", "Dual Medicare Medicaid Eligibility", 2026),
+    ("Secondary Care", "Secondary Health Care", 2026),
+    ("Tertiary Healthcare", "Tertiary Health Care", 2026),
+]
+MESH_RENAMED = {key(o): n for o, n, _ in MESH_RENAMES}
+MESH_RENAMED_YEAR = {key(o): y for o, _, y in MESH_RENAMES}
+# Headings NLM deleted for MeSH 2026 (marked [OBSOLETE] in the 2026 RDF). On 2026-11-12 each,
+# quoted, gave 0 records with "quoted phrase not found"; unquoted, Meta-Research[mh] gave 0 too.
+MESH_DELETED = {key(n): 2026 for n in (
+    "Dietary Patterns", "Disordered Eating Behavior", "Meta-Research",
+    "Assessment of Medication Adherence", "Nonsuppressible Insulin-Like Activity",
+    "Korarchaeota")}
 NOTES = {
     key("Retraction of Publication"): "NLM's own Retraction filter now runs "
                                       "'hasretractionof OR retraction notice[pt]'.",
+    key("Classical Article"): "Seminal Article is itself on NLM's list of discontinued types: "
+                              "older citations keep it, new citations no longer get it.",
 }
 
 TAG = re.compile(r"\[\s*(pt|ptyp|publication type)\s*\]", re.I)
@@ -175,11 +277,14 @@ def find_terms(text):
 
 def classify(term, field="pt", quoted=True):
     """(status, new_name). For MeSH headings, an unquoted old name is mapped to the new heading
-    by PubMed, so it is 'renamed_mapped' (reported, not a problem)."""
+    by PubMed, so it is 'renamed_mapped' (reported, not a problem). A deleted heading is
+    'deleted', quoted or not."""
     k = key(term)
     if field == "mesh":
         if k in MESH_RENAMED:
             return ("renamed" if quoted else "renamed_mapped"), MESH_RENAMED[k]
+        if k in MESH_DELETED:
+            return "deleted", None
         return "ok", None
     if k in RENAMED:
         return "renamed", RENAMED[k]
@@ -196,7 +301,7 @@ def effect(status, op, side, new=None, field="pt"):
     if status == "renamed_mapped":
         return ("PubMed maps this old heading name to \"%s\" because it is not in quotes; "
                 "quoted, it would find nothing. Prefer the new name." % new)
-    if status not in ("renamed", "not_recognized"):
+    if status not in ("renamed", "not_recognized", "deleted"):
         return ""
     if new:
         newtype = ("records indexed with \"%s\"" if field == "mesh" else "records typed \"%s\"") % new
@@ -215,7 +320,9 @@ def effect(status, op, side, new=None, field="pt"):
 
 def renamed_year(term, field):
     k = key(term)
-    return (MESH_RENAMED_YEAR if field == "mesh" else RENAMED_YEAR).get(k)
+    if field == "mesh":
+        return MESH_RENAMED_YEAR.get(k) or MESH_DELETED.get(k)
+    return RENAMED_YEAR.get(k)
 
 
 def check_text(text):
@@ -226,7 +333,8 @@ def check_text(text):
         op, side = operator_of(text, t["start"], t["tag_end"])
         out.append({"term": t["term"], "tag": t["tag"], "field": t["field"],
                     "quoted": t["quoted"], "status": status, "new_name": new,
-                    "mesh_year": renamed_year(t["term"], t["field"]) if new else None,
+                    "mesh_year": (renamed_year(t["term"], t["field"])
+                                  if (new or status == "deleted") else None),
                     "operator": op, "side": side,
                     "effect": effect(status, op, side, new, t["field"]),
                     "note": NOTES.get(key(t["term"]), "") if t["field"] == "pt" else "",
@@ -236,7 +344,7 @@ def check_text(text):
 
 def fix_text(text):
     """text with every renamed publication type and MeSH heading replaced by its new name
-    (quoted)."""
+    (quoted). Deleted headings are left for a person to replace."""
     for t in sorted(find_terms(text), key=lambda d: -d["start"]):
         status, new = classify(t["term"], t["field"], t["quoted"])
         if status in ("renamed", "renamed_mapped"):
@@ -340,16 +448,18 @@ def apply_live(findings, live):
             f["status"] = "not_recognized"
             f["effect"] = effect("not_recognized", f["operator"], f["side"], None,
                                  f.get("field", "pt"))
-        elif res.get("recognized") is True and f["status"] == "renamed":
+        elif res.get("recognized") is True and f["status"] in ("renamed", "deleted"):
             f["effect"] = ("PubMed recognized this old name when checked (count %s); NLM has "
-                           "still renamed it, so prefer the new name." % res.get("count"))
+                           "still %s it, so prefer the current name." % (
+                               res.get("count"),
+                               "deleted" if f["status"] == "deleted" else "renamed"))
     return findings
 
 
 def is_problem(f):
     if f["status"] == "not_recognized":
         return True
-    if f["status"] == "renamed":
+    if f["status"] in ("renamed", "deleted"):
         return (f.get("live") or {}).get("recognized") is not True
     return False
 
@@ -400,6 +510,8 @@ def describe(f):
         head += ' -> renamed to "%s"%s.' % (f["new_name"], year)
     elif f["status"] == "renamed_mapped":
         head += ' -> renamed to "%s"%s; mapped because unquoted.' % (f["new_name"], year)
+    elif f["status"] == "deleted":
+        head += " -> heading deleted%s; replace it by hand." % year
     elif f["status"] == "discontinued":
         head += " -> discontinued type."
     elif f["status"] == "not_recognized":
@@ -424,8 +536,8 @@ def describe(f):
 def main(argv=None, fetch=None, out=None, stdin=None):
     out = out or sys.stdout
     ap = argparse.ArgumentParser(prog="pubmed_pt_check.py", description=(
-        "Find PubMed publication types ([pt]) and quoted MeSH headings ([mh]) that NLM renamed "
-        "or discontinued."))
+        "Find PubMed publication types ([pt]) and quoted MeSH headings ([mh]) that NLM renamed, "
+        "deleted or discontinued."))
     ap.add_argument("inputs", nargs="+", help="query strings, file paths, or - for stdin")
     ap.add_argument("--live", action="store_true",
                     help="ask PubMed (E-utilities) whether each publication type and quoted "
@@ -461,8 +573,8 @@ def main(argv=None, fetch=None, out=None, stdin=None):
             out.write("error: %s\n" % e)
         n = sum(1 for f in findings if is_problem(f))
         n_pt = sum(1 for f in findings if f.get("field", "pt") == "pt")
-        out.write("checked %d publication-type term(s) and %d MeSH term(s): %d renamed or "
-                  "unrecognized, %d discontinued.\n" % (
+        out.write("checked %d publication-type term(s) and %d MeSH term(s): %d renamed, deleted "
+                  "or unrecognized, %d discontinued.\n" % (
                       n_pt, len(findings) - n_pt, n,
                       sum(1 for f in findings if f["status"] == "discontinued")))
     if errors:

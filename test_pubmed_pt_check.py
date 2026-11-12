@@ -9,7 +9,10 @@ The esearch replies below copy the shape and numbers of real E-utilities replies
 words unquoted -> mapped to "consensus statements as topic"[MeSH Terms], 5,436 records.
 The 0.1.2 tests follow replies read on 2026-11-12: '"Depressive Disorder, Major"[Mesh]' -> 0
 with quotedphrasesnotfound; 'Depressive Disorder, Major[mh]' unquoted -> "major depressive
-disorder"[MeSH Terms], 46,495 records (see HEADINGS-2026.md)."""
+disorder"[MeSH Terms], 46,495 records (see HEADINGS-2026.md).
+The 0.1.3 tests follow the MeSH 2023-2026 RDF comparison and the PubMed checks of 2026-11-12
+(see MESH-RENAMES.md): '"Pregnant Women"[Mesh]' -> 0 with quotedphrasesnotfound; '"Pregnant
+People"[mh]' -> 17,946; '"Tinea cruris"[mh]' (a case-only rename) -> 15, recognized."""
 import io
 import json
 import os
@@ -37,6 +40,13 @@ OLD_MESH_REPLY = {"esearchresult": {"count": "0", "idlist": [],
                                                     "quotedphrasesnotfound": [
                                                         "\"consensus development conferences as topic\"[mh]"],
                                                     "outputmessages": ["No items found."]}}}
+# 2026-11-12: "Pregnant Women"[Mesh] (renamed for MeSH 2025).
+PREGNANT_WOMEN_REPLY = {"esearchresult": {"count": "0", "idlist": [],
+                                          "querytranslation": "\"Pregnant Women\"[Mesh]",
+                                          "warninglist": {"phrasesignored": [],
+                                                          "quotedphrasesnotfound": [
+                                                              "\"Pregnant Women\"[Mesh]"],
+                                                          "outputmessages": ["No items found."]}}}
 
 CDA_SNIPPET = ('"Clinical protocols"[MESH] OR "Consensus"[MESH] OR "Consensus development '
                'conferences as topic"[MESH] OR "Guidelines as topic" [Mesh:NoExp] OR '
@@ -54,6 +64,11 @@ RENAMES_2026 = [
     ("Receptors, Kainic Acid", "Kainic Acid Receptors"),
     ("Surgical Procedures, Colorectal", "Colorectal Surgical Procedures"),
 ]
+
+# The PubMed query printed in Table 1 of PMC13449680 (searched January-November 2025), first two
+# blocks, with straight quotes.
+DISABILITY_QUERY = ('("Disabled Persons"[Mesh] OR disab*[tiab]) AND ("Exercise"[Mesh] OR '
+                    '"Motor Activity"[Mesh] OR "physical activity"[tiab])')
 
 
 def fake_fetch(url):
@@ -107,19 +122,20 @@ class TestParsing(unittest.TestCase):
 
     def test_seventeen_discontinued(self):
         self.assertEqual(len(p.DISCONTINUED), 17)
-        self.assertEqual(len(p.RENAMED), 3)
-        self.assertEqual(len(p.MESH_RENAMED), 8)
+        self.assertEqual(len(p.RENAMED), 4)
+        self.assertEqual(len(p.MESH_RENAMED), 89)
 
     def test_rename_years(self):
-        # NLM Tech Bull 2024 Nov-Dec (461):e4 and 2026 Jan-Feb (468):e6.
+        # NLM Tech Bull 2024 Nov-Dec (461):e4 and 2026 Jan-Feb (468):e6; MeSH RDF for D016419.
         self.assertEqual(p.RENAMED_YEAR[p.key("Retraction of Publication")], 2025)
         self.assertEqual(p.RENAMED_YEAR[p.key("Congress")], 2026)
         self.assertEqual(p.RENAMED_YEAR[p.key("Consensus Development Conference")], 2026)
+        self.assertEqual(p.RENAMED_YEAR[p.key("Classical Article")], 2026)
         self.assertEqual(set(p.RENAMED_YEAR), set(p.RENAMED))
         self.assertEqual(set(p.MESH_RENAMED_YEAR), set(p.MESH_RENAMED))
 
     def test_version(self):
-        self.assertEqual(p.VERSION, "0.1.2")
+        self.assertEqual(p.VERSION, "0.1.3")
         self.assertNotIn("following the 2025 MeSH change", p.__doc__)
 
 
@@ -240,6 +256,103 @@ class TestMesh2026Headings(unittest.TestCase):
         self.assertEqual(len(f), 1)
         self.assertEqual((f[0]["new_name"], f[0]["operator"]), ("Procedural Sedation", "AND"))
         self.assertIn("0 records", f[0]["effect"])
+
+
+class TestMeshCensus(unittest.TestCase):
+    """0.1.3: every MeSH 2024, 2025 and 2026 heading rename, plus the 2026 deletions."""
+
+    def test_counts_per_year(self):
+        years = list(p.MESH_RENAMED_YEAR.values())
+        self.assertEqual((years.count(2024), years.count(2025), years.count(2026)), (21, 30, 38))
+        self.assertEqual(len(p.MESH_RENAMES), 89)
+        self.assertEqual(len(p.MESH_DELETED), 6)
+        self.assertEqual(set(p.MESH_DELETED.values()), {2026})
+
+    def test_current_names_are_not_old_names(self):
+        for new in p.MESH_RENAMED.values():
+            self.assertNotIn(p.key(new), p.MESH_RENAMED, new)
+            self.assertNotIn(p.key(new), p.MESH_DELETED, new)
+            self.assertEqual(p.classify(new, "mesh", True), ("ok", None), new)
+
+    def test_2025_and_2024_examples(self):
+        self.assertEqual(p.classify("Pregnant Women", "mesh", True), ("renamed", "Pregnant People"))
+        self.assertEqual(p.MESH_RENAMED_YEAR[p.key("Pregnant Women")], 2025)
+        self.assertEqual(p.classify("Disabled Persons", "mesh", True),
+                         ("renamed", "Persons with Disabilities"))
+        self.assertEqual(p.classify("Tobacco", "mesh", True), ("renamed", "Nicotiana"))
+        self.assertEqual(p.MESH_RENAMED_YEAR[p.key("Tobacco")], 2024)
+        self.assertEqual(p.classify("Tobacco", "mesh", False), ("renamed_mapped", "Nicotiana"))
+
+    def test_renamed_twice_maps_to_current_name(self):
+        self.assertEqual(p.MESH_RENAMED[p.key("Monkeypox")], "Mpox, Monkeypox")
+        self.assertEqual(p.MESH_RENAMED[p.key("Mpox (monkeypox)")], "Mpox, Monkeypox")
+        self.assertEqual(p.MESH_RENAMED_YEAR[p.key("Monkeypox")], 2024)
+        self.assertEqual(p.MESH_RENAMED_YEAR[p.key("Mpox (monkeypox)")], 2025)
+
+    def test_case_and_comma_only_renames_not_listed(self):
+        # Both still work quoted in PubMed (checked 2026-11-12), so they are not findings.
+        self.assertEqual(p.classify("Tinea cruris", "mesh", True), ("ok", None))
+        self.assertEqual(p.classify("Health Disparate, Minority and Vulnerable Populations",
+                                    "mesh", True), ("ok", None))
+
+    def test_network_meta_analysis_pt_is_fine(self):
+        # "Network Meta-Analysis" is still a publication type; only the heading was renamed.
+        self.assertEqual(p.classify("Network Meta-Analysis", "pt", True), ("ok", None))
+        self.assertEqual(p.classify("Network Meta-Analysis", "mesh", True),
+                         ("renamed", "Network Meta-Analysis as Topic"))
+
+    def test_published_disability_query(self):
+        f = [x for x in p.check_text(DISABILITY_QUERY) if x["status"] != "ok"]
+        self.assertEqual(len(f), 1)
+        self.assertEqual(f[0]["term"], "Disabled Persons")
+        self.assertEqual(f[0]["new_name"], "Persons with Disabilities")
+        self.assertEqual(f[0]["mesh_year"], 2025)
+        self.assertEqual((f[0]["operator"], f[0]["side"]), ("OR", "after"))
+        self.assertIn('silently misses records indexed with "Persons with Disabilities"',
+                      f[0]["effect"])
+        self.assertTrue(p.is_problem(f[0]))
+        self.assertEqual(p.main([DISABILITY_QUERY], out=io.StringIO()), 1)
+
+    def test_fix_2025_headings(self):
+        self.assertEqual(p.fix_text('"Pregnant Women"[Mesh] OR "Disabled Persons"[mh]'),
+                         '"Pregnant People"[Mesh] OR "Persons with Disabilities"[mh]')
+
+    def test_live_confirms_pregnant_women(self):
+        findings, errors = p.run(['"Pregnant Women"[Mesh] OR pregnan*[tiab]'], live=True,
+                                 fetch=lambda u: PREGNANT_WOMEN_REPLY, pause=0)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["status"], "renamed")
+        self.assertEqual(findings[0]["live"]["recognized"], False)
+        self.assertTrue(p.is_problem(findings[0]))
+
+    def test_deleted_heading_quoted(self):
+        f = [x for x in p.check_text('"Meta-Research"[mh] AND bias[tiab]') if x["status"] != "ok"]
+        self.assertEqual(len(f), 1)
+        self.assertEqual((f[0]["status"], f[0]["new_name"]), ("deleted", None))
+        self.assertEqual(f[0]["mesh_year"], 2026)
+        self.assertEqual((f[0]["operator"], f[0]["side"]), ("AND", "after"))
+        self.assertIn("0 records", f[0]["effect"])
+        self.assertTrue(p.is_problem(f[0]))
+        out = io.StringIO()
+        self.assertEqual(p.main(['"Meta-Research"[mh] AND bias[tiab]'], out=out), 1)
+        self.assertIn("heading deleted (MeSH 2026); replace it by hand.", out.getvalue())
+        self.assertIn("1 renamed, deleted or unrecognized", out.getvalue())
+
+    def test_deleted_heading_unquoted_and_not_fixed(self):
+        self.assertEqual(p.classify("dietary patterns", "mesh", False), ("deleted", None))
+        self.assertEqual(p.main(["diet AND dietary patterns[mh]"], out=io.StringIO()), 1)
+        q = '"Dietary Patterns"[mh] OR diet[tiab]'
+        self.assertEqual(p.fix_text(q), q)
+
+    def test_classical_article(self):
+        self.assertEqual(p.classify("Classical Article"), ("renamed", "Seminal Article"))
+        self.assertEqual(p.classify("Seminal Article"), ("discontinued", None))
+        f = [x for x in p.check_text('"Classical Article"[pt]') if x["status"] != "ok"]
+        self.assertEqual(len(f), 1)
+        self.assertEqual(f[0]["mesh_year"], 2026)
+        self.assertIn("discontinued types", f[0]["note"])
+        self.assertEqual(p.fix_text('"Classical Article"[pt]'), '"Seminal Article"[pt]')
 
 
 class TestOperators(unittest.TestCase):
