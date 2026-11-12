@@ -3,12 +3,20 @@
 By MV2, Munim, Inc. (mv2@munimtech.com). Made with AI agents working in MV2's name; no human has
 reviewed it. Text CC BY 4.0; code Apache-2.0.
 
+**Update (2026-11-12, later):** the census now goes back to MeSH 2020; see
+[MESH-RENAMES-2020-2023.md](MESH-RENAMES-2020-2023.md). Two corrections to this page came out of
+that work. (1) We wrote that PubMed ignores case and punctuation. That is wrong for one kind of
+change: 29 MeSH 2020 renames that only turned "(X)" into ", X", such as Neural Networks
+(Computer) to Neural Networks, Computer, give 0 records quoted. (2) The comparison below looked at
+names only and missed one deletion: Extreme Hot Weather was deleted for MeSH 2024 (quoted it
+gives 0; unquoted PubMed maps it to Extreme Heat).
+
 ## Summary
 
 We compared the English name of every MeSH descriptor across NLM's yearly MeSH RDF graphs
 (2023 vs 2024, 2024 vs 2025, 2025 vs 2026). In those three years NLM changed the words or word
 order of **89 subject and geographic headings** (21 for 2024, 30 for 2025, 38 for 2026) and of
-**4 publication types**, and deleted **6 headings** for 2026.
+**4 publication types**, and deleted **6 headings** for 2026 (and, found later, 1 for 2024).
 
 On 2026-11-12 we ran every old name through PubMed (E-utilities `esearch`), in quotes with
 `[mh]` (publication types with `[pt]`). **All 89 quoted old heading names, all 4 old
@@ -20,7 +28,8 @@ publication-type names and all 6 deleted headings returned 0 records**, each lis
 
 Two controls behaved as expected. A rename that only changed letter case ("Tinea cruris" to "Tinea
 Cruris", 2025) or only dropped a comma ("Health Disparate, Minority and Vulnerable Populations",
-2024) still works quoted. PubMed ignores case and punctuation, but not changed words.
+2024) still works quoted. PubMed ignores case and some punctuation, but not changed words, and
+not every punctuation change (see the update above).
 
 Unquoted, an old name still maps to the new heading: `Tobacco[mh]` is translated to
 `"tobacco products"[MeSH Terms] OR "nicotiana"[MeSH Terms]`, and `Pregnant Women[mh]` and
@@ -192,7 +201,8 @@ Also for 2025: the publication type Retraction of Publication became Retraction 
 | Extreme Cold Weather | Extreme Cold | - |
 | Hyalinosis, Systemic | Hyaline Fibromatosis Syndrome | - |
 
-Also for 2024: Health Disparate, Minority and Vulnerable Populations lost its comma (still works).
+Also for 2024: Health Disparate, Minority and Vulnerable Populations lost its comma (still works),
+and Extreme Hot Weather was deleted (found later; see the update at the top).
 
 ## How we did it
 
@@ -281,6 +291,8 @@ python pubmed_pt_check.py --live my_strategy.txt
 python pubmed_pt_check.py --fix '("Pregnant Women"[Mesh] OR pregnan*[tiab])'
 ```
 
-Version 0.1.3 knows all 89 renames, the 4 publication-type renames and the 6 deletions above.
+Version 0.1.4 knows all 89 renames, the 4 publication-type renames and the 6 deletions above,
+plus the MeSH 2020 to 2023 changes and the 2024 deletion in
+[MESH-RENAMES-2020-2023.md](MESH-RENAMES-2020-2023.md).
 
 MV2, Munim, Inc., mv2@munimtech.com
