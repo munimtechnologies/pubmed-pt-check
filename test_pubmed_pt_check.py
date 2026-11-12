@@ -4,7 +4,9 @@
 """Offline tests for pubmed_pt_check.py (no network: --live uses a fake fetch).
 
 The esearch replies below copy the shape and numbers of real E-utilities replies read on
-2026-11-11 (see FINDINGS.md)."""
+2026-11-11 (see FINDINGS.md). The MeSH tests (0.1.1) follow replies read on 2026-11-12:
+'"consensus development conferences as topic"[mh]' -> 0 with quotedphrasesnotfound; the same
+words unquoted -> mapped to "consensus statements as topic"[MeSH Terms], 5,436 records."""
 import io
 import json
 import os
@@ -25,6 +27,18 @@ NEW_REPLY = {"esearchresult": {"count": "34339", "retmax": "0", "retstart": "0",
                                "querytranslation": "\"Retraction Notice\"[Publication Type]"}}
 RETRACTED_REPLY = {"esearchresult": {"count": "35579", "idlist": [],
                                      "querytranslation": "\"Retracted Publication\"[Publication Type]"}}
+# 2026-11-12: a quoted old MeSH heading name.
+OLD_MESH_REPLY = {"esearchresult": {"count": "0", "idlist": [],
+                                    "querytranslation": "\"consensus development conferences as topic\"[mh]",
+                                    "warninglist": {"phrasesignored": [],
+                                                    "quotedphrasesnotfound": [
+                                                        "\"consensus development conferences as topic\"[mh]"],
+                                                    "outputmessages": ["No items found."]}}}
+
+CDA_SNIPPET = ('"Clinical protocols"[MESH] OR "Consensus"[MESH] OR "Consensus development '
+               'conferences as topic"[MESH] OR "Guidelines as topic" [Mesh:NoExp] OR '
+               '"guideline"[pt] OR "practice guideline"[pt] OR "consensus development '
+               'conference"[pt] OR "consensus development conference, NIH"[pt]')
 
 
 def fake_fetch(url):
@@ -79,6 +93,96 @@ class TestParsing(unittest.TestCase):
     def test_seventeen_discontinued(self):
         self.assertEqual(len(p.DISCONTINUED), 17)
         self.assertEqual(len(p.RENAMED), 3)
+        self.assertEqual(len(p.MESH_RENAMED), 1)
+
+    def test_rename_years(self):
+        # NLM Tech Bull 2024 Nov-Dec (461):e4 and 2026 Jan-Feb (468):e6.
+        self.assertEqual(p.RENAMED_YEAR[p.key("Retraction of Publication")], 2025)
+        self.assertEqual(p.RENAMED_YEAR[p.key("Congress")], 2026)
+        self.assertEqual(p.RENAMED_YEAR[p.key("Consensus Development Conference")], 2026)
+        self.assertEqual(set(p.RENAMED_YEAR), set(p.RENAMED))
+        self.assertEqual(set(p.MESH_RENAMED_YEAR), set(p.MESH_RENAMED))
+
+    def test_version(self):
+        self.assertEqual(p.VERSION, "0.1.1")
+        self.assertNotIn("following the 2025 MeSH change", p.__doc__)
+
+
+class TestMesh(unittest.TestCase):
+    def test_mesh_tags_found(self):
+        for q in ('"Guidelines as topic" [Mesh:NoExp]', '"Consensus"[MESH]', 'consensus[mh]',
+                  '"Consensus"[MeSH Terms]', '"Consensus"[majr]', '"Consensus"[mh:noexp]'):
+            t = p.find_terms(q)
+            self.assertEqual(len(t), 1, q)
+            self.assertEqual(t[0]["field"], "mesh", q)
+        t = p.find_terms('"Guidelines as topic" [Mesh:NoExp]')[0]
+        self.assertEqual(t["term"], "Guidelines as topic")
+        self.assertTrue(t["quoted"])
+        self.assertFalse(p.find_terms("consensus[mh]")[0]["quoted"])
+
+    def test_classify_mesh(self):
+        self.assertEqual(p.classify("Consensus Development Conferences as Topic", "mesh", True),
+                         ("renamed", "Consensus Statements as Topic"))
+        self.assertEqual(p.classify("consensus development conferences as topic", "mesh", False),
+                         ("renamed_mapped", "Consensus Statements as Topic"))
+        self.assertEqual(p.classify("Consensus", "mesh", True), ("ok", None))
+        # a publication-type name tagged as MeSH is not a publication-type finding
+        self.assertEqual(p.classify("Congress", "mesh", True), ("ok", None))
+
+    def test_quoted_old_heading_in_or_group(self):
+        f = [x for x in p.check_text('"Consensus"[MESH] OR "Consensus development conferences '
+                                     'as topic"[MESH]') if x["status"] != "ok"]
+        self.assertEqual(len(f), 1)
+        self.assertEqual((f[0]["field"], f[0]["status"]), ("mesh", "renamed"))
+        self.assertEqual((f[0]["operator"], f[0]["side"]), ("OR", "before"))
+        self.assertIn('records indexed with "Consensus Statements as Topic"', f[0]["effect"])
+        self.assertEqual(f[0]["mesh_year"], 2026)
+        self.assertTrue(p.is_problem(f[0]))
+
+    def test_unquoted_old_heading_is_mapped_not_a_problem(self):
+        out = io.StringIO()
+        code = p.main(["consensus development conferences as topic[mh]"], out=out)
+        self.assertEqual(code, 0)
+        self.assertIn("mapped because unquoted", out.getvalue())
+
+    def test_cda_style_filter(self):
+        f = [x for x in p.check_text(CDA_SNIPPET) if x["status"] != "ok"]
+        self.assertEqual([(x["field"], x["status"]) for x in f],
+                         [("mesh", "renamed"), ("pt", "renamed"), ("pt", "discontinued")])
+        self.assertEqual(sum(1 for x in f if p.is_problem(x)), 2)
+        self.assertEqual(p.main([CDA_SNIPPET], out=io.StringIO()), 1)
+
+    def test_fix_mesh_and_pt(self):
+        self.assertEqual(
+            p.fix_text('"Consensus development conferences as topic"[MESH] OR '
+                       '"consensus development conference"[pt]'),
+            '"Consensus Statements as Topic"[MESH] OR "Consensus Statement"[pt]')
+
+    def test_live_checks_quoted_mesh_only(self):
+        urls = []
+
+        def fetch(url):
+            urls.append(url)
+            return OLD_MESH_REPLY
+
+        findings, errors = p.run(['"Made Up Heading"[mh] OR cancer[mh]'], live=True,
+                                 fetch=fetch, pause=0)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(urls), 1)
+        self.assertIn("%22Made+Up+Heading%22%5Bmh%5D", urls[0])
+        made = [x for x in findings if x["term"] == "Made Up Heading"][0]
+        self.assertEqual(made["status"], "not_recognized")
+        self.assertIn("silently misses", made["effect"])
+        cancer = [x for x in findings if x["term"] == "cancer"][0]
+        self.assertEqual(cancer["status"], "ok")
+        self.assertNotIn("live", cancer)
+
+    def test_describe_mesh_unrecognized(self):
+        out = io.StringIO()
+        code = p.main(["--live", '"Made Up Heading"[mh]'], fetch=lambda u: OLD_MESH_REPLY,
+                      out=out)
+        self.assertEqual(code, 1)
+        self.assertIn("does not recognize this MeSH heading", out.getvalue())
 
 
 class TestOperators(unittest.TestCase):
@@ -197,6 +301,7 @@ class TestLive(unittest.TestCase):
         self.assertIn("esearch.fcgi?", u)
         self.assertIn("%22Retraction+Notice%22%5Bpt%5D", u)
         self.assertIn("tool=pubmed-pt-check", u)
+        self.assertIn("%22Consensus%22%5Bmh%5D", p.esearch_url("Consensus", "mesh"))
 
     def test_unknown_type_flagged_live(self):
         out = io.StringIO()
@@ -236,6 +341,12 @@ class TestMain(unittest.TestCase):
         code = p.main(['"Cochrane Database Syst Rev"[ta] NOT "Retraction of Publication"[pt]'], out=out)
         self.assertEqual(code, 1)
         self.assertIn('renamed to "Retraction Notice"', out.getvalue())
+        self.assertIn("(MeSH 2025)", out.getvalue())
+
+    def test_rename_year_2026_in_text(self):
+        out = io.StringIO()
+        p.main(['"Consensus Development Conference"[pt]'], out=out)
+        self.assertIn('renamed to "Consensus Statement" (MeSH 2026)', out.getvalue())
 
     def test_discontinued_only_exit_0(self):
         self.assertEqual(p.main(["overall[pt]"], out=io.StringIO()), 0)
@@ -246,6 +357,8 @@ class TestMain(unittest.TestCase):
         obj = json.loads(out.getvalue())
         self.assertEqual(obj["findings"][0]["new_name"], "Conference Proceedings")
         self.assertEqual(obj["findings"][0]["operator"], "AND")
+        self.assertEqual(obj["findings"][0]["mesh_year"], 2026)
+        self.assertEqual(obj["version"], p.VERSION)
 
     def test_fix_cli(self):
         out = io.StringIO()
